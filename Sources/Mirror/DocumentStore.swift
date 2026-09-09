@@ -1761,6 +1761,7 @@ final class DocumentStore: ObservableObject {
     private func showError(_ message: String, _ error: Error) {
         let alert = NSAlert(error: error)
         alert.messageText = message
+        alert.informativeText = error.localizedDescription
         alert.runModal()
     }
 

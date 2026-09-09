@@ -93,21 +93,22 @@ final class MarkdownFileExporter: NSObject, WKNavigationDelegate {
                   let width = layout["width"] as? Double, width > 0,
                   let height = layout["height"] as? Double, height > 0,
                   let headings = layout["headings"] as? [[String: Any]] else {
-                self.finish(.failure(error ?? CocoaError(.fileWriteUnknown)))
+                self.finish(.failure(error ?? Self.exportError("无法读取文档的标题或页面尺寸。")))
                 return
             }
-            // WebKit exports this rectangle as one continuous page. Use the same
-            // rectangle for destination coordinates so long documents stay accurate.
+            // WebKit may split a tall rectangle across several PDF pages.
+            // Keep the capture rectangle aligned with the measured DOM layout.
             let configuration = WKPDFConfiguration()
             configuration.rect = CGRect(x: 0, y: 0, width: width, height: height)
             self.webView.createPDF(configuration: configuration) { [weak self] result in
                 do {
                     let data = try result.get()
                     guard let document = PDFDocument(data: data),
-                          document.pageCount == 1, let page = document.page(at: 0) else {
-                        throw CocoaError(.fileWriteUnknown)
+                          document.pageCount > 0 else {
+                        throw Self.exportError("WebKit 未生成有效的 PDF 页面（实际页数：\(PDFDocument(data: data)?.pageCount ?? 0)）。")
                     }
-                    let bounds = page.bounds(for: .mediaBox)
+                    let pages = (0..<document.pageCount).compactMap { document.page(at: $0) }
+                    let totalHeight = pages.reduce(CGFloat.zero) { $0 + $1.bounds(for: .mediaBox).height }
                     let root = PDFOutline()
                     var parents: [(level: Int, outline: PDFOutline)] = []
                     for heading in headings {
@@ -119,8 +120,17 @@ final class MarkdownFileExporter: NSObject, WKNavigationDelegate {
                         outline.isOpen = true
                         // DOM coordinates start at the top; PDF coordinates at the bottom.
                         let top = max(0, min(height, y - 8))
-                        outline.destination = PDFDestination(page: page, at: CGPoint(
-                            x: bounds.minX, y: bounds.maxY - top * bounds.height / height))
+                        var offset = top * totalHeight / height
+                        var targetPage = pages[pages.count - 1]
+                        for candidate in pages {
+                            targetPage = candidate
+                            let pageHeight = candidate.bounds(for: .mediaBox).height
+                            if offset < pageHeight { break }
+                            if candidate !== pages.last { offset -= pageHeight }
+                        }
+                        let bounds = targetPage.bounds(for: .mediaBox)
+                        outline.destination = PDFDestination(page: targetPage, at: CGPoint(
+                            x: bounds.minX, y: bounds.maxY - min(offset, bounds.height)))
                         while let parent = parents.last, parent.level >= level {
                             parents.removeLast()
                         }
@@ -130,7 +140,7 @@ final class MarkdownFileExporter: NSObject, WKNavigationDelegate {
                     }
                     if root.numberOfChildren > 0 { document.outlineRoot = root }
                     guard let output = document.dataRepresentation() else {
-                        throw CocoaError(.fileWriteUnknown)
+                        throw Self.exportError("添加目录后无法保存 PDF 数据。")
                     }
                     try output.write(to: url, options: .atomic)
                     self?.finish(.success(url))
@@ -139,6 +149,10 @@ final class MarkdownFileExporter: NSObject, WKNavigationDelegate {
                 }
             }
         }
+    }
+
+    private static func exportError(_ description: String) -> NSError {
+        NSError(domain: "Mirror.PDFExport", code: 1, userInfo: [NSLocalizedDescriptionKey: description])
     }
 
     private func finish(_ result: Result<URL?, Error>) {
