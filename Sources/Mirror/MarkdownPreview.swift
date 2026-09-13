@@ -95,6 +95,11 @@ struct MarkdownPreview: NSViewRepresentable {
             guard message.frameInfo.isMainFrame else { return }
             if let text = message.body as? String { parent?.onReferenceToCodex(ReferenceSelection(text: text)) }
             else if let body = message.body as? [String: Any], let action = body["action"] as? String {
+                if action == "memoryContextMenu", let values = body["ids"] as? [String] {
+                    let menu = CodexMemoryActions.shared.menu(ids: values.compactMap(UUID.init(uuidString:)), fileURL: parent?.fileURL)
+                    if !menu.items.isEmpty { menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil) }
+                    return
+                }
                 if action == "memoryMenu", let ids = body["ids"] as? [String] {
                     let menu = NSMenu()
                     for record in CodexMemoryStore.shared.records(for: parent?.fileURL) where ids.contains(record.id.uuidString) {

@@ -48,6 +48,9 @@ Task { @MainActor in
         let web = descendants(window.contentView!, of: WKWebView.self).first!
         @MainActor func nativeMarkers() -> [NSButton] { descendants(window.contentView!, of: NSButton.self).filter { $0.toolTip?.hasPrefix("回顾") == true } }
         precondition(!nativeMarkers().isEmpty, "Editor memory marker missing")
+        precondition(nativeMarkers()[0].menu?.items.first?.title == "删除气泡记录", "Marker right-click deletion missing")
+        precondition(CodexMemoryActions.shared.menu(ids: [record.id], fileURL: file.appendingPathExtension("other")).items.isEmpty,
+                     "Context actions must not delete another document's records")
         let markerCount = try await web.callAsyncJavaScript("return document.querySelectorAll('[aria-label^=\"回顾对话\"]').length", arguments: [:], in: nil, contentWorld: .defaultClient)
         precondition(markerCount as? Int == 1, "Preview memory marker missing")
         CodexMemoryStore.shared.enabled = false
@@ -106,7 +109,16 @@ Task { @MainActor in
             try capture(settings, "memory-management")
             settings.close()
         }
-        precondition(CodexMemoryStore.shared.delete(ids: [record.id, secondRecord.id]))
+        try await Task.sleep(for: .milliseconds(250))
+        let groupedMenu = nativeMarkers()[0].menu!
+        precondition(groupedMenu.items.last?.title == "删除此处全部记录（2）", "Grouped marker must offer individual and whole-group deletion")
+        groupedMenu.performActionForItem(at: 0)
+        try await Task.sleep(for: .milliseconds(150))
+        precondition(CodexMemoryStore.shared.records.count == 1, "Context menu single deletion must preserve the other record")
+        let remainingMenu = nativeMarkers()[0].menu!
+        precondition(remainingMenu.items.count == 1 && remainingMenu.items[0].title == "删除气泡记录")
+        remainingMenu.performActionForItem(at: 0)
+        precondition(CodexMemoryStore.shared.records.isEmpty, "Marker right-click action must delete the selected record")
         try await Task.sleep(for: .milliseconds(250))
         precondition(nativeMarkers().isEmpty, "Deleted records must remove editor markers")
         let remaining = try await web.callAsyncJavaScript("return document.querySelectorAll('[aria-label^=\"回顾对话\"]').length", arguments: [:], in: nil, contentWorld: .defaultClient)

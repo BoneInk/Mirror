@@ -212,3 +212,34 @@ struct CodexMemorySettingsView: View {
         }
     }
 }
+
+/// Shared native context menu for source and preview markers. IDs are scoped to the current file.
+@MainActor
+final class CodexMemoryActions: NSObject {
+    static let shared = CodexMemoryActions()
+    func menu(ids: [UUID], fileURL: URL?) -> NSMenu {
+        let records = CodexMemoryStore.shared.records(for: fileURL).filter { ids.contains($0.id) }
+        let menu = NSMenu()
+        func add(_ title: String, _ ids: [UUID]) {
+            let item = NSMenuItem(title: title, action: #selector(deleteRecords(_:)), keyEquivalent: "")
+            item.target = self; item.representedObject = ids
+            item.image = NSImage(systemSymbolName: "trash", accessibilityDescription: nil)
+            menu.addItem(item)
+        }
+        if records.count == 1 { add("删除气泡记录", [records[0].id]) }
+        else if !records.isEmpty {
+            for record in records { add("删除：" + record.menuTitle, [record.id]) }
+            menu.addItem(.separator())
+            add("删除此处全部记录（\(records.count)）", records.map(\.id))
+        }
+        return menu
+    }
+    @objc private func deleteRecords(_ sender: NSMenuItem) {
+        guard let ids = sender.representedObject as? [UUID] else { return }
+        if !CodexMemoryStore.shared.delete(ids: Set(ids)) {
+            let alert = NSAlert(); alert.messageText = "未能删除气泡记录"
+            alert.informativeText = CodexMemoryStore.shared.error ?? "请重试。"
+            alert.runModal()
+        }
+    }
+}

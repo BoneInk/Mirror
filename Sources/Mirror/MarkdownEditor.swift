@@ -772,6 +772,10 @@ private final class MirrorTextView: NSTextView {
             button.frame = NSRect(x: max(2, textContainerOrigin.x - 28), y: rect.minY, width: 18, height: 18)
             addSubview(button); memoryButtons.append(button); occupied[row] = button; memoryGroups[record.id.uuidString] = [record.id]
         }
+        for button in memoryButtons {
+            guard let key = button.identifier?.rawValue, let ids = memoryGroups[key] else { continue }
+            button.menu = CodexMemoryActions.shared.menu(ids: ids, fileURL: memoryFileURL)
+        }
     }
     @objc private func openMemory(_ sender: NSButton) {
         guard let key = sender.identifier?.rawValue, let ids = memoryGroups[key], let window else { return }

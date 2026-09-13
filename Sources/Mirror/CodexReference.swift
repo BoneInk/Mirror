@@ -124,6 +124,11 @@ enum CodexReference {
                 const rect=range.getBoundingClientRect();
                 window.webkit.messageHandlers.mirrorReference.postMessage({action:group.ids.length>1?'memoryMenu':'memory',id:memory.id,ids:group.ids,x:rect.x,y:rect.y,width:rect.width,height:rect.height});
               });
+              marker.addEventListener('contextmenu',event=> {
+                if(!event.isTrusted) return;
+                event.preventDefault();event.stopPropagation();
+                window.webkit.messageHandlers.mirrorReference.postMessage({action:'memoryContextMenu',ids:group.ids});
+              });
               markers.appendChild(marker);
             }
           }

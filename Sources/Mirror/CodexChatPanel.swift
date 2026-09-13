@@ -551,6 +551,10 @@ private struct CodexChatView: View {
                 Spacer()
                 if model.agent.kind == .codex { Button { model.openInCodex() } label: { Image(systemName: "arrow.up.right.square") }
                     .help("在 Codex 中打开").accessibilityLabel("在 Codex 中打开").disabled(model.isRunning) }
+                if model.remembered {
+                    Button { if model.deleteMemory() { close() } } label: { Image(systemName: "trash") }
+                        .help("删除气泡记录").accessibilityLabel("删除气泡记录")
+                }
                 Button(action: close) { Image(systemName: "xmark") }
                     .help("关闭对话").accessibilityLabel("关闭对话")
             }.buttonStyle(.borderless).foregroundStyle(.secondary)
@@ -629,6 +633,11 @@ private struct CodexChatView: View {
         .padding(16)
         .foregroundStyle(.primary)
         .preferredColorScheme(model.theme.isDark ? .dark : .light)
+        .contextMenu {
+            if model.remembered {
+                Button("删除气泡记录", systemImage: "trash", role: .destructive) { if model.deleteMemory() { close() } }
+            }
+        }
         .onExitCommand(perform: close)
         .onChange(of: model.recordDeleted) { _, deleted in if deleted { close() } }
         .onAppear { resize(!model.messages.isEmpty) }
