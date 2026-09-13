@@ -17,7 +17,7 @@
 
 ![源码编辑与实时预览](docs/images/native-editor-light.png)
 
-![沉浸式阅读](docs/images/native-reader-dark.png)
+![沉浸式阅读](docs/images/native-reader-light.png)
 
 ## 开始使用
 

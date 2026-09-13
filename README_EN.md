@@ -17,7 +17,7 @@ A native macOS Markdown editor for writing, reading, and AI conversations anchor
 
 ![Source editing and live preview](docs/images/native-editor-light.png)
 
-![Immersive reading](docs/images/native-reader-dark.png)
+![Immersive reading](docs/images/native-reader-light.png)
 
 ## Get started
 
