@@ -1,0 +1,21 @@
+Mirror — 首次打开 / First launch
+
+1. 将 Mirror.app 拖入 Applications，再从 Applications 打开。
+2. 如果出现“Apple 无法验证 Mirror”，点击“完成”。
+3. 打开系统设置 → 隐私与安全性，向下找到 Mirror 的拦截提示。
+4. 点击“仍要打开”，按提示认证并确认打开。
+
+当前版本使用 ad-hoc 签名，尚未完成 Apple 公证。仅在确认来源并信任本项目时操作。
+若没有“仍要打开”，请重新尝试启动 Mirror 后返回此页面；受单位管理的 Mac 可能需要联系管理员。
+不需要关闭系统安全保护，也不需要执行终端命令。
+
+1. Drag Mirror.app to Applications, then open it there.
+2. If Apple cannot verify Mirror, dismiss the alert.
+3. Open System Settings → Privacy & Security and find the blocked app notice.
+4. Click Open Anyway, authenticate if prompted, and confirm.
+
+This release is ad-hoc signed, not notarized by Apple. Proceed only if you trust its source.
+If Open Anyway is missing, try launching Mirror again and return to Settings. Managed Macs may require an administrator.
+
+Official downloads: https://github.com/BoneInk/Mirror/releases
+Apple instructions: https://support.apple.com/102445

@@ -27,6 +27,8 @@ Configure agents and conversation memory in Settings. Each runtime requires its 
 
 The app is ad-hoc signed and has not been notarized by Apple.
 
+If macOS says Apple cannot verify Mirror, dismiss the alert, then go to **System Settings → Privacy & Security → Open Anyway** and confirm. Only proceed if you trust the download from this project’s Release page. See [Apple’s instructions](https://support.apple.com/en-us/102445).
+
 ## Build from source
 
 Requires the Swift 6 toolchain:

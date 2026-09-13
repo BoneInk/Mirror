@@ -31,6 +31,7 @@ trap cleanup EXIT
 
 cp -R "$APP_DIR" "$STAGING_DIR/Mirror.app"
 ln -s /Applications "$STAGING_DIR/Applications"
+cp "$PROJECT_DIR/Resources/First-Open.txt" "$STAGING_DIR/首次打开 - First Open.txt"
 
 hdiutil create \
   -volname "Mirror $VERSION" \

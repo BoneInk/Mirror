@@ -27,6 +27,8 @@
 
 安装包使用 ad-hoc 签名，尚未完成 Apple 公证。
 
+首次打开若提示“Apple 无法验证 Mirror”，请先点“完成”，再到 **系统设置 → 隐私与安全性 → 仍要打开**，按提示确认。仅在确认安装包来自本项目 Release 且信任来源时操作。详见 [Apple 官方说明](https://support.apple.com/zh-cn/102445)。
+
 ## 从源码构建
 
 需要 Swift 6 工具链：
