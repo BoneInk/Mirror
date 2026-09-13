@@ -2,16 +2,16 @@
 
 [简体中文](README.md) | English
 
-A native macOS Markdown editor for writing, reading, and AI conversations anchored to your document.
+Mirror is a Markdown editor for macOS. Preview as you write, or select a passage and ask AI about it.
 
 [Download Mirror 1.1](https://github.com/BoneInk/Mirror/releases/tag/v1.1) · macOS 14+ · Intel / Apple Silicon
 
-## What Mirror focuses on
+## What makes it different
 
-- **Conversations beside the text.** Select a passage to ask a question. Reopen its document marker to revisit or continue the discussion. Delete records individually or in batches.
-- **Your choice of agent.** Connect Codex, Claude Code, Smartwork, and other local runtimes or services. Switch agents, models, and supported thinking levels in the bubble. Mirror remembers your choices and supports custom connections.
-- **Writing and reading together.** Source and preview scroll in sync. Switch to reader mode while keeping your file tree, outline, and local document history close at hand.
-- **Local documents.** Edit Markdown files directly, render Mermaid diagrams and math offline, and export HTML or PDF. Questions and quotations are sent to your chosen agent only when you submit them.
+- **Select text and ask AI.** A conversation opens beside the passage, with no copying back and forth. A marker lets you return to the conversation later, continue it, or delete it.
+- **Use the AI tools you know.** Connect Codex, Claude Code, Smartwork, and more. Switch agents, models, and supported thinking levels right in the conversation. Mirror remembers your choices.
+- **Preview as you write.** Markdown and preview scroll together. Switch to reader mode when you want to focus on the article.
+- **Keep your files on your Mac.** Edit local Markdown files, view diagrams and math offline, and export HTML or PDF. Questions and quoted text go to your chosen agent only when you send them.
 
 ## Screenshots
 
