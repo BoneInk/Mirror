@@ -218,7 +218,7 @@ struct EditorTheme: Codable, Hashable, Identifiable, Sendable {
     static let paper = EditorTheme(
         id: "builtin.paper", name: "Mirror Light", isDark: false, isBuiltIn: true,
         backgroundHex: "#FFFFFF", foregroundHex: "#2D2D2D", mutedHex: "#707070", lineHex: "#D8D8D8",
-        accentHex: "#706B62", codeHex: "#F5F5F5", syntaxKeywordHex: "#9A4F5D", syntaxStringHex: "#4E7354",
+        accentHex: "#AE542F", codeHex: "#F5F5F5", syntaxKeywordHex: "#9A4F5D", syntaxStringHex: "#4E7354",
         syntaxCommentHex: "#636366", syntaxNumberHex: "#9B633C", syntaxTypeHex: "#4F6F7A", syntaxTagHex: "#9A5745"
     )
     static let ink = EditorTheme(
