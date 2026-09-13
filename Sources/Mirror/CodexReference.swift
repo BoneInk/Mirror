@@ -119,8 +119,8 @@ enum CodexReference {
               const group={marker,ids:[memory.id]};occupied.set(row,group);
               marker.addEventListener('click',event=> {
                 if(!event.isTrusted) return;
-                references.set(memory.id,{range:range.cloneRange(),text:range.toString()});
-                window.mirrorRevealReference(memory.id);
+                // A grouped marker only opens a chooser; do not highlight until a record is chosen.
+                if(group.ids.length===1) window.mirrorRevealMemory(memory.id);
                 const rect=range.getBoundingClientRect();
                 window.webkit.messageHandlers.mirrorReference.postMessage({action:group.ids.length>1?'memoryMenu':'memory',id:memory.id,ids:group.ids,x:rect.x,y:rect.y,width:rect.width,height:rect.height});
               });
@@ -136,21 +136,26 @@ enum CodexReference {
             const memory=memories.find(m=>m.id===id);
             if(!memory) return;
             let range=resolveAnchor(memory.renderedAnchor);
-            if(!range && memory.sourceLine!=null) {
-              const block=sourceBlock(memory.sourceLine);
-              if(block) {range=document.createRange();range.selectNodeContents(block);}
-            }
             if(range) {references.set(id,{range,text:range.toString()});window.mirrorRevealReference(id);}
+            else {
+              // A source line locates a block, not the exact quoted text. Never paint the whole list.
+              window.mirrorClearReference();
+              if(memory.sourceLine!=null) sourceBlock(memory.sourceLine)?.scrollIntoView({block:'center'});
+            }
           };
-          window.mirrorSetMemories = values => {memories=values;renderMemories();};
+          window.mirrorSetMemories = values => {
+            if(memories.some(m=>m.id===activeReferenceID) && !values.some(m=>m.id===activeReferenceID)) window.mirrorClearReference();
+            memories=values;renderMemories();
+          };
           window.mirrorClearReference = id => {if(id && id !== activeReferenceID) return;activeReferenceID=null;window.getSelection()?.removeAllRanges();window.CSS?.highlights?.delete('mirror-reference');button.classList.remove('visible');};
           new ResizeObserver(renderMemories).observe(document.querySelector('article') || document.body);
           window.addEventListener('resize',renderMemories);
 
           window.mirrorRevealReference = id => {
             const saved = references.get(id), range = saved?.range;
-            activeReferenceID = id;
+            window.mirrorClearReference();
             if (!range || !range.startContainer.isConnected || range.toString() !== saved.text) return;
+            activeReferenceID = id;
             const element = range.startContainer.parentElement;
             element?.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth',block:'center'});
             if (window.CSS?.highlights) CSS.highlights.set('mirror-reference',new Highlight(range));
@@ -205,6 +210,11 @@ enum CodexReference {
             window.webkit.messageHandlers.mirrorReference.postMessage({
               ...(capture() || {text:''}), action: 'contextMenu'
             });
+          });
+          document.addEventListener('pointerdown', event => {
+            if(!event.isTrusted || markers.contains(event.target) || button.contains(event.target)) return;
+            // Preserve the native selection for right-click Copy / Ask; clear only the decoration.
+            window.CSS?.highlights?.delete('mirror-reference');
           });
           document.addEventListener('selectionchange', update);
           document.addEventListener('pointerup', () => requestAnimationFrame(update));

@@ -129,6 +129,21 @@ MainActor.assumeIsolated {
         return window.getSelection().toString()==='' && !window.CSS?.highlights?.has('mirror-reference');
         """, arguments: [:], in: nil, contentWorld: .defaultClient)
         precondition(memoryMarkers as? Bool == true, "Memory markers must survive inserted text, hide when disabled, and clear only their own selection")
+        let highlightCleanup = try await webView.callAsyncJavaScript("""
+        const article=document.querySelector('article');
+        article.innerHTML='<ul data-source-line="0"><li>First item</li><li>Second item</li></ul>';
+        const exact={id:'exact',preview:'question',renderedAnchor:{quote:'Second item',prefix:'First item',suffix:'',offset:10}};
+        const fallback={id:'fallback',preview:'question',sourceLine:0,renderedAnchor:{quote:'missing source **markup**'}};
+        const highlighted=()=>window.CSS?.highlights?.has('mirror-reference') || !!window.getSelection().toString();
+        window.mirrorSetMemories([exact,fallback]);window.mirrorRevealMemory('exact');
+        if(!highlighted()) return false;
+        window.mirrorRevealMemory('fallback');if(highlighted()) return false;
+        window.mirrorRevealMemory('exact');window.mirrorSetMemories([fallback]);if(highlighted()) return false;
+        window.mirrorSetMemories([exact]);window.mirrorRevealMemory('exact');
+        article.innerHTML='changed';window.mirrorRevealReference('exact');
+        return !highlighted();
+        """, arguments: [:], in: nil, contentWorld: .defaultClient)
+        precondition(highlightCleanup as? Bool == true, "Block fallback, deleted records and invalid anchors must never leave reference highlights")
         precondition(probe.messages == 0, "Synthetic clicks must not trigger handoff")
         let exposed = try await webView.callAsyncJavaScript("return !!window.webkit?.messageHandlers?.mirrorReference;",
             arguments: [:], in: nil, contentWorld: .page)
