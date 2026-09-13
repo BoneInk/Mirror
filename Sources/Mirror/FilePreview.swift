@@ -31,9 +31,10 @@ struct ExternalFilePreview: View {
                 Button("Show in Finder") { document.revealInFinder(url) }
                     .buttonStyle(.borderless)
                 Button("Open in Default App") { document.openInDefaultApp(url) }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(NativeActionStyle(theme: document.theme))
             }
             .padding(.horizontal, 14).frame(height: 48)
+            .background(document.theme.workspaceCanvas.opacity(0.4))
 
             Divider().opacity(0.5)
             if document.isImageFile(url) {

@@ -6,6 +6,10 @@ struct AppearanceSettingsView: View {
 
     var body: some View {
         TabView {
+            AgentSettingsView()
+                .tabItem { Label("智能体", systemImage: "sparkles") }
+            CodexMemorySettingsView()
+                .tabItem { Label("气泡记忆", systemImage: "bubble.left.and.bubble.right") }
             ThemeSettingsView()
                 .tabItem { Label("Themes", systemImage: "paintpalette") }
             TypographySettingsView()
@@ -15,7 +19,7 @@ struct AppearanceSettingsView: View {
         }
         .padding(20)
         .frame(width: 720, height: 570)
-        .background(document.theme.background)
+        .nativeDialog(theme: document.theme)
         .preferredColorScheme(document.theme.isDark ? .dark : .light)
     }
 }
@@ -67,6 +71,7 @@ private struct EditorBehaviorSettingsView: View {
                 }
             }
             .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
 
             Spacer()
 
@@ -133,8 +138,7 @@ private struct ThemeSettingsView: View {
                 Button("Duplicate & Customize…") {
                     editingTheme = document.duplicateTheme(document.theme)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(document.theme.accent)
+                .buttonStyle(NativeActionStyle(theme: document.theme, prominent: true))
             }
         }
         .sheet(item: $editingTheme) { theme in
@@ -200,10 +204,10 @@ private struct ThemeCard: View {
             }
             .padding(11)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(hex: theme.backgroundHex), in: RoundedRectangle(cornerRadius: 10))
+            .background(ContentSurface(theme: theme, radius: 10))
             .overlay {
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(selected ? Color(hex: theme.accentHex) : Color(hex: theme.lineHex), lineWidth: selected ? 2 : 1)
+                ContentShape(radius: 10)
+                    .stroke(selected ? Color(hex: theme.accentHex) : .clear, lineWidth: selected ? 2 : 0)
             }
         }
         .buttonStyle(.plain)
@@ -251,7 +255,7 @@ private struct ThemeEditorView: View {
                 }
                 .foregroundStyle(Color(hex: theme.foregroundHex))
                 .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(hex: theme.backgroundHex), in: RoundedRectangle(cornerRadius: 10))
+                .background(ContentSurface(theme: theme, radius: 10))
                 .overlay { RoundedRectangle(cornerRadius: 10).stroke(Color(hex: theme.lineHex)) }
             }
 
@@ -265,6 +269,7 @@ private struct ThemeEditorView: View {
         }
         .padding(22)
         .frame(width: 540)
+        .nativeDialog(theme: theme)
     }
 
     private func colorBinding(_ keyPath: WritableKeyPath<EditorTheme, String>) -> Binding<Color> {
@@ -330,6 +335,7 @@ private struct TypographySettingsView: View {
                 }
             }
             .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
 
             Divider()
             HStack {
@@ -357,7 +363,7 @@ private struct TypographySettingsView: View {
                                 .buttonStyle(.plain).help("Move imported font to Trash")
                             }
                             .font(.caption).padding(.horizontal, 9).padding(.vertical, 6)
-                            .background(.primary.opacity(0.06), in: Capsule())
+                            .background(ContentSurface(theme: document.theme, radius: 8))
                         }
                     }
                 }

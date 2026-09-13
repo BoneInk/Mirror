@@ -14,6 +14,8 @@ struct MarkdownEditor: NSViewRepresentable {
     let language: String?
     let onInsertImages: ([URL]) -> Bool
     let onPasteImage: (NSImage) -> Bool
+    let onReferenceToCodex: (ReferenceSelection) -> Void
+    var fileURL: URL? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -26,6 +28,8 @@ struct MarkdownEditor: NSViewRepresentable {
         let textView = MirrorTextView()
         textView.onInsertImages = onInsertImages
         textView.onPasteImage = onPasteImage
+        textView.onReferenceToCodex = onReferenceToCodex
+        textView.configureMemories(fileURL: fileURL)
         textView.registerForDraggedTypes([.fileURL])
         textView.delegate = context.coordinator
         textView.isRichText = false
@@ -67,6 +71,8 @@ struct MarkdownEditor: NSViewRepresentable {
         if let textView = textView as? MirrorTextView {
             textView.onInsertImages = onInsertImages
             textView.onPasteImage = onPasteImage
+            textView.onReferenceToCodex = onReferenceToCodex
+            textView.configureMemories(fileURL: fileURL)
         }
         let configurationChanged = context.coordinator.lastTheme != theme ||
             context.coordinator.lastTypography != typography ||
@@ -705,6 +711,130 @@ struct MarkdownEditor: NSViewRepresentable {
 private final class MirrorTextView: NSTextView {
     var onInsertImages: (([URL]) -> Bool)?
     var onPasteImage: ((NSImage) -> Bool)?
+    var onReferenceToCodex: ((ReferenceSelection) -> Void)?
+
+    private var memoryFileURL: URL?
+    private var memoryObserver: NSObjectProtocol?
+    private var memoryButtons: [NSButton] = []
+    private var memoryRanges: [UUID: NSRange] = [:]
+    private var memoryGroups: [String: [UUID]] = [:]
+    private var pendingMemoryRect = NSRect.zero
+    private var markerSignature = ""
+
+    func configureMemories(fileURL: URL?) {
+        memoryFileURL = fileURL
+        if memoryObserver == nil {
+            memoryObserver = NotificationCenter.default.addObserver(forName: CodexMemoryStore.changed, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.refreshMemoryMarkers(force: true) }
+            }
+        }
+        DispatchQueue.main.async { [weak self] in self?.refreshMemoryMarkers() }
+    }
+    deinit { if let memoryObserver { NotificationCenter.default.removeObserver(memoryObserver) } }
+    override func didChangeText() {
+        super.didChangeText()
+        refreshMemoryMarkers(force: true)
+    }
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        DispatchQueue.main.async { [weak self] in self?.refreshMemoryMarkers(force: true) }
+    }
+    func clearReferenceSelection(expected: NSRange) {
+        let range = selectedRange()
+        guard range == expected else { return }
+        setSelectedRange(NSRange(location: min(range.location, (string as NSString).length), length: 0))
+    }
+    private func refreshMemoryMarkers(force: Bool = false) {
+        let records = CodexMemoryStore.shared.records(for: memoryFileURL)
+        let signature = (memoryFileURL?.path ?? "") + String(string.hashValue) + records.map { $0.id.uuidString }.joined()
+        guard force || markerSignature != signature else { return }
+        markerSignature = signature
+        memoryButtons.forEach { $0.removeFromSuperview() }; memoryButtons = []; memoryRanges = [:]; memoryGroups = [:]
+        guard let layoutManager, let textContainer else { return }
+        layoutManager.ensureLayout(for: textContainer)
+        var occupied: [Int: NSButton] = [:]
+        for record in records {
+            guard let range = record.sourceAnchor?.resolve(in: string) else { continue }
+            let glyph = layoutManager.glyphRange(forCharacterRange: NSRange(location: range.location, length: 1), actualCharacterRange: nil)
+            let rect = layoutManager.boundingRect(forGlyphRange: glyph, in: textContainer).offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y)
+            let row = Int(rect.midY)
+            memoryRanges[record.id] = range
+            if let button = occupied[row], let key = button.identifier?.rawValue {
+                memoryGroups[key, default: []].append(record.id)
+                button.toolTip = "回顾 \(memoryGroups[key]!.count) 条对话"
+                continue
+            }
+            let button = NSButton(image: NSImage(systemSymbolName: "bubble.left.fill", accessibilityDescription: "回顾对话")!, target: self, action: #selector(openMemory(_:)))
+            button.identifier = NSUserInterfaceItemIdentifier(record.id.uuidString)
+            button.isBordered = false
+            button.contentTintColor = .controlAccentColor
+            button.toolTip = "回顾对话：" + String(record.quote.prefix(60))
+            button.frame = NSRect(x: max(2, textContainerOrigin.x - 28), y: rect.minY, width: 18, height: 18)
+            addSubview(button); memoryButtons.append(button); occupied[row] = button; memoryGroups[record.id.uuidString] = [record.id]
+        }
+    }
+    @objc private func openMemory(_ sender: NSButton) {
+        guard let key = sender.identifier?.rawValue, let ids = memoryGroups[key], let window else { return }
+        pendingMemoryRect = window.convertToScreen(convert(sender.frame, to: nil))
+        if ids.count == 1 { openMemory(id: ids[0]); return }
+        let menu = NSMenu()
+        for record in CodexMemoryStore.shared.records(for: memoryFileURL) where ids.contains(record.id) {
+            let item = NSMenuItem(title: record.menuTitle, action: #selector(chooseMemory(_:)), keyEquivalent: "")
+            item.target = self; item.representedObject = record.id.uuidString; menu.addItem(item)
+        }
+        menu.popUp(positioning: nil, at: NSPoint(x: sender.frame.maxX, y: sender.frame.maxY), in: self)
+    }
+    @objc private func chooseMemory(_ sender: NSMenuItem) {
+        if let value = sender.representedObject as? String, let id = UUID(uuidString: value) { openMemory(id: id) }
+    }
+    private func openMemory(id: UUID) {
+        guard let record = CodexMemoryStore.shared.records(for: memoryFileURL).first(where: { $0.id == id }),
+              let range = memoryRanges[id] else { return }
+        let rect = pendingMemoryRect
+        setSelectedRange(range)
+        onReferenceToCodex?(ReferenceSelection(text: record.quote, location: record.location, screenRect: rect,
+            reveal: { [weak self] in
+                guard let self, let range = record.sourceAnchor?.resolve(in: self.string) else { return }
+                self.scrollRangeToVisible(range);self.setSelectedRange(range)
+            }, anchorView: self, sourceAnchor: record.sourceAnchor, renderedAnchor: record.renderedAnchor,
+            memoryID: id, dismiss: { [weak self] in self?.clearReferenceSelection(expected: range) }))
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let menu = super.menu(for: event) ?? NSMenu()
+        let range = selectedRange()
+        let selected = range.length > 0 && NSMaxRange(range) <= (string as NSString).length
+            ? (string as NSString).substring(with: range) : ""
+        let title = selected.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "Open Agent Chat" : "Ask About Selection"
+        let item = NSMenuItem(title: CodexReference.localized(title),
+                              action: #selector(referenceToCodex(_:)), keyEquivalent: "")
+        item.target = self
+        item.representedObject = selected
+        menu.insertItem(.separator(), at: 0)
+        menu.insertItem(item, at: 0)
+        return menu
+    }
+
+    @objc private func referenceToCodex(_ sender: NSMenuItem) {
+        guard let text = sender.representedObject as? String else { return }
+        let range = selectedRange()
+        let snapshot = string
+        let line = (snapshot as NSString).substring(to: min(range.location, (snapshot as NSString).length))
+            .components(separatedBy: "\n").count
+        var actual = NSRange()
+        let rect = firstRect(forCharacterRange: range, actualRange: &actual)
+        onReferenceToCodex?(ReferenceSelection(text: text, location: "原文第 \(line) 行", screenRect: rect, reveal: { [weak self] in
+            guard let self, self.string == snapshot else { NSSound.beep(); return }
+            self.window?.makeKeyAndOrderFront(nil)
+            self.setSelectedRange(range)
+            self.scrollRangeToVisible(range)
+            self.showFindIndicator(for: range)
+        }, anchorView: self, sourceAnchor: CodexTextAnchor.capture(in: snapshot, range: range),
+            memoryID: CodexMemoryStore.shared.records(for: memoryFileURL).first(where: { $0.sourceAnchor?.resolve(in: snapshot) == range })?.id,
+            dismiss: { [weak self] in self?.clearReferenceSelection(expected: range) }))
+    }
+
 
     override func paste(_ sender: Any?) {
         if let image = NSPasteboard.general.readObjects(forClasses: [NSImage.self])?.first as? NSImage,

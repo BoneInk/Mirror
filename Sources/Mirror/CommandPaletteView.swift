@@ -180,7 +180,7 @@ struct CommandPaletteView: View {
             .font(.caption).foregroundStyle(.secondary).padding(10)
         }
         .frame(width: 650, height: 500)
-        .background(document.theme.background)
+        .nativeDialog(theme: document.theme)
         .preferredColorScheme(document.theme.isDark ? .dark : .light)
         .onAppear {
             searchFocused = true

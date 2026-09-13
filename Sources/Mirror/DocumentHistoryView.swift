@@ -60,6 +60,8 @@ struct DocumentHistoryView: View {
                         .tag(entry.id)
                     }
                     .listStyle(.sidebar)
+                    .scrollContentBackground(.hidden)
+                    .background(document.theme.workspaceCanvas.opacity(0.5))
                     .frame(minWidth: 245, idealWidth: 270, maxWidth: 320)
 
                     if let entry = selectedEntry {
@@ -97,14 +99,13 @@ struct DocumentHistoryView: View {
                     document.restoreDocumentHistory(entry)
                     dismiss()
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(document.theme.accent)
+                .buttonStyle(NativeActionStyle(theme: document.theme, prominent: true))
                 .disabled(selectedEntry == nil)
             }
             .padding(12)
         }
         .frame(width: 900, height: 590)
-        .background(document.theme.background)
+        .nativeDialog(theme: document.theme)
         .preferredColorScheme(document.theme.isDark ? .dark : .light)
         .onAppear { document.loadDocumentHistory() }
         .onChange(of: document.documentHistory) { _, entries in

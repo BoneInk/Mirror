@@ -216,10 +216,16 @@ struct EditorTheme: Codable, Hashable, Identifiable, Sendable {
     }
 
     static let paper = EditorTheme(
-        id: "builtin.paper", name: "Mirror Paper", isDark: false, isBuiltIn: true,
-        backgroundHex: "#FFFEFA", foregroundHex: "#292D2C", mutedHex: "#7B817E", lineHex: "#D8D6D0",
-        accentHex: "#C96552", codeHex: "#F2EFE8", syntaxKeywordHex: "#9A4F5D", syntaxStringHex: "#4E7354",
-        syntaxCommentHex: "#969B98", syntaxNumberHex: "#9B633C", syntaxTypeHex: "#4F6F7A", syntaxTagHex: "#9A5745"
+        id: "builtin.paper", name: "Mirror Light", isDark: false, isBuiltIn: true,
+        backgroundHex: "#FFFFFF", foregroundHex: "#1D1D1F", mutedHex: "#636366", lineHex: "#D1D1D6",
+        accentHex: "#0066CC", codeHex: "#F2F2F7", syntaxKeywordHex: "#9A4F5D", syntaxStringHex: "#4E7354",
+        syntaxCommentHex: "#636366", syntaxNumberHex: "#9B633C", syntaxTypeHex: "#4F6F7A", syntaxTagHex: "#9A5745"
+    )
+    static let ink = EditorTheme(
+        id: "builtin.ink", name: "Mirror Dark", isDark: true, isBuiltIn: true,
+        backgroundHex: "#1C1C1E", foregroundHex: "#F5F5F7", mutedHex: "#AEAEB2", lineHex: "#48484A",
+        accentHex: "#64B5FF", codeHex: "#2C2C2E", syntaxKeywordHex: "#DE9CAC", syntaxStringHex: "#BCD092",
+        syntaxCommentHex: "#A79B8F", syntaxNumberHex: "#E3B078", syntaxTypeHex: "#A8C7CC", syntaxTagHex: "#DFA282"
     )
     static let sepia = EditorTheme(
         id: "builtin.sepia", name: "Sepia", isDark: false, isBuiltIn: true,
@@ -236,6 +242,7 @@ struct EditorTheme: Codable, Hashable, Identifiable, Sendable {
 
     static let builtIns: [EditorTheme] = [
         .paper,
+        .ink,
         .sepia,
         .midnight,
         EditorTheme(id: "builtin.solarized", name: "Solarized Light", isDark: false, isBuiltIn: true,

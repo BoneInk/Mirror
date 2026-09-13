@@ -11,14 +11,17 @@ struct MarkdownPreview: NSViewRepresentable {
     let preserveSingleLineBreaks: Bool
     let baseURL: URL?
     let onOpenLocalFile: (URL) -> Void
+    let onReferenceToCodex: (ReferenceSelection) -> Void
     let syncMode: ScrollSyncMode
     @Binding var scrollPosition: ScrollPosition
     @Binding var scrollSource: ScrollSource
+    var fileURL: URL? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
+        config.userContentController.add(context.coordinator, contentWorld: .defaultClient, name: "mirrorReference")
         config.defaultWebpagePreferences.allowsContentJavaScript = true
         let localResourceHandler = LocalPreviewResourceHandler()
         config.setURLSchemeHandler(localResourceHandler, forURLScheme: LocalPreviewResources.scheme)
@@ -31,6 +34,7 @@ struct MarkdownPreview: NSViewRepresentable {
         context.coordinator.revision = revision
         context.coordinator.documentLength = (markdown as NSString).length
         context.coordinator.webView = view
+        context.coordinator.observeMemories()
         context.coordinator.localResourceHandler = localResourceHandler
         view.onUserScroll = { [weak coordinator = context.coordinator] in
             coordinator?.requestScrollUpdate(userInitiated: true)
@@ -49,6 +53,7 @@ struct MarkdownPreview: NSViewRepresentable {
 
     func updateNSView(_ view: WKWebView, context: Context) {
         context.coordinator.parent = self
+        context.coordinator.refreshMemories()
         if configurationSignature != context.coordinator.configurationSignature {
             context.coordinator.configurationSignature = configurationSignature
             context.coordinator.revision = revision
@@ -76,12 +81,150 @@ struct MarkdownPreview: NSViewRepresentable {
         }
     }
 
+    static func dismantleNSView(_ view: WKWebView, coordinator: Coordinator) {
+        view.configuration.userContentController.removeScriptMessageHandler(forName: "mirrorReference", contentWorld: .defaultClient)
+    }
+
     private var configurationSignature: String {
         "\(theme.hashValue):\(typography.hashValue):breaks=\(preserveSingleLineBreaks):\(baseURL?.path ?? "")"
     }
 
     @MainActor
-    final class Coordinator: NSObject, WKNavigationDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            guard message.frameInfo.isMainFrame else { return }
+            if let text = message.body as? String { parent?.onReferenceToCodex(ReferenceSelection(text: text)) }
+            else if let body = message.body as? [String: Any], let action = body["action"] as? String {
+                if action == "memoryMenu", let ids = body["ids"] as? [String] {
+                    let menu = NSMenu()
+                    for record in CodexMemoryStore.shared.records(for: parent?.fileURL) where ids.contains(record.id.uuidString) {
+                        let item = NSMenuItem(title: record.menuTitle,
+                                              action: #selector(openMemoryChoice(_:)), keyEquivalent: "")
+                        item.target = self
+                        var selected = body; selected["id"] = record.id.uuidString
+                        item.representedObject = selected; menu.addItem(item)
+                    }
+                    menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+                    return
+                }
+                var selection = referenceSelection(body)
+                if action == "memory", let id = (body["id"] as? String).flatMap(UUID.init(uuidString:)),
+                   let record = CodexMemoryStore.shared.records(for: parent?.fileURL).first(where: { $0.id == id }) {
+                    selection = ReferenceSelection(text: record.quote, location: record.location,
+                        screenRect: selection.screenRect, reveal: selection.reveal, anchorView: webView,
+                        sourceAnchor: record.sourceAnchor, renderedAnchor: record.renderedAnchor, memoryID: id,
+                        dismiss: selection.dismiss)
+                    parent?.onReferenceToCodex(selection)
+                    return
+                }
+                if action == "reference" { parent?.onReferenceToCodex(selection); return }
+                guard action == "contextMenu" else { return }
+                let text = selection.text
+                let title = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? "Open Agent Chat" : "Ask About Selection"
+                let menu = NSMenu()
+                let item = NSMenuItem(title: CodexReference.localized(title),
+                                      action: #selector(openCodexChat(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = selection
+                menu.addItem(item)
+                if !text.isEmpty {
+                    let copy = NSMenuItem(title: CodexReference.localized("Copy"), action: #selector(copyReference(_:)), keyEquivalent: "")
+                    copy.target = self
+                    copy.representedObject = text
+                    menu.addItem(copy)
+                }
+                menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+            }
+        }
+
+        private func referenceSelection(_ body: [String: Any]) -> ReferenceSelection {
+            var rect: NSRect?
+            if let view = webView, let window = view.window,
+               let x = body["x"] as? Double, let y = body["y"] as? Double,
+               let width = body["width"] as? Double, let height = body["height"] as? Double {
+                let local = NSRect(x: x, y: view.isFlipped ? y : view.bounds.height - y - height, width: width, height: height)
+                rect = window.convertToScreen(view.convert(local, to: nil))
+            }
+            let id = body["id"] as? String
+            var renderedAnchor: CodexTextAnchor?
+            if let raw = body["anchor"], let data = try? JSONSerialization.data(withJSONObject: raw) {
+                renderedAnchor = try? JSONDecoder().decode(CodexTextAnchor.self, from: data)
+            }
+            var sourceAnchor: CodexTextAnchor?
+            if let markdown = parent?.markdown, let line = body["sourceLine"] as? Int {
+                let lines = markdown.components(separatedBy: "\n")
+                if line >= 0 && line < lines.count {
+                    let offset = lines.prefix(line).reduce(0) { $0 + ($1 as NSString).length + 1 }
+                    sourceAnchor = CodexTextAnchor.capture(in: markdown, range: NSRange(location: offset, length: (lines[line] as NSString).length))
+                }
+            }
+            let existing = CodexMemoryStore.shared.records(for: parent?.fileURL).first { record in
+                guard let anchor = renderedAnchor, let saved = record.renderedAnchor else { return false }
+                return anchor.quote == saved.quote && anchor.prefix == saved.prefix && anchor.suffix == saved.suffix
+            }
+            return ReferenceSelection(text: body["text"] as? String ?? "", location: body["location"] as? String,
+                                      screenRect: rect, reveal: { [weak webView] in
+                guard let webView, let id,
+                      let data = try? JSONEncoder().encode(id), let encoded = String(data: data, encoding: .utf8) else { return }
+                webView.window?.makeKeyAndOrderFront(nil)
+                webView.evaluateJavaScript("window.mirrorRevealReference?.(\(encoded))", in: nil, in: .defaultClient) { _ in }
+            }, anchorView: webView, sourceAnchor: sourceAnchor, renderedAnchor: renderedAnchor, memoryID: existing?.id,
+               dismiss: { [weak webView] in
+                guard let id, let data = try? JSONEncoder().encode(id), let encoded = String(data: data, encoding: .utf8) else { return }
+                webView?.evaluateJavaScript("window.mirrorClearReference?.(\(encoded))", in: nil, in: .defaultClient) { _ in }
+            })
+        }
+
+        @objc private func openMemoryChoice(_ sender: NSMenuItem) {
+            guard let body = sender.representedObject as? [String: Any], let id = body["id"] as? String,
+                  let record = CodexMemoryStore.shared.records(for: parent?.fileURL).first(where: { $0.id.uuidString == id }) else { return }
+            let current = referenceSelection(body)
+            let encoded = String(data: try! JSONEncoder().encode(id), encoding: .utf8)!
+            webView?.evaluateJavaScript("window.mirrorRevealMemory?.(\(encoded))", in: nil, in: .defaultClient) { _ in }
+            parent?.onReferenceToCodex(ReferenceSelection(text: record.quote, location: record.location,
+                screenRect: current.screenRect, reveal: current.reveal, anchorView: webView,
+                sourceAnchor: record.sourceAnchor, renderedAnchor: record.renderedAnchor, memoryID: record.id, dismiss: current.dismiss))
+        }
+
+        @objc private func openCodexChat(_ sender: NSMenuItem) {
+            if let selection = sender.representedObject as? ReferenceSelection { parent?.onReferenceToCodex(selection) }
+        }
+
+        @objc private func copyReference(_ sender: NSMenuItem) {
+            guard let text = sender.representedObject as? String else { return }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+        }
+
+        private var memoryObserver: NSObjectProtocol?
+        private var memorySignature = ""
+        func observeMemories() {
+            memoryObserver = NotificationCenter.default.addObserver(forName: CodexMemoryStore.changed, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.refreshMemories(force: true) }
+            }
+        }
+        func refreshMemories(force: Bool = false) {
+            guard let parent, let view = webView else { return }
+            let records = CodexMemoryStore.shared.records(for: parent.fileURL)
+            var payload: [[String: Any]] = []
+            for record in records {
+                var item: [String: Any] = ["id": record.id.uuidString, "preview": String(record.messages.first?.text.suffix(80) ?? "")]
+                if let anchor = record.renderedAnchor ?? record.sourceAnchor, let data = try? JSONEncoder().encode(anchor),
+                   let json = try? JSONSerialization.jsonObject(with: data) { item["renderedAnchor"] = json }
+                if let range = record.sourceAnchor?.resolve(in: parent.markdown) {
+                    item["sourceLine"] = (parent.markdown as NSString).substring(to: range.location).components(separatedBy: "\n").count - 1
+                }
+                payload.append(item)
+            }
+            guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]),
+                  let json = String(data: data, encoding: .utf8) else { return }
+            let signature = json + String(parent.revision)
+            guard force || memorySignature != signature else { return }
+            memorySignature = signature
+            view.evaluateJavaScript("window.mirrorSetMemories?.(\(json))", in: nil, in: .defaultClient) { _ in }
+        }
+
         var configurationSignature = ""
         var revision = -1
         var pendingPosition: ScrollPosition?
@@ -103,6 +246,7 @@ struct MarkdownPreview: NSViewRepresentable {
 
         deinit {
             renderTask?.cancel()
+            if let memoryObserver { NotificationCenter.default.removeObserver(memoryObserver) }
             if let scrollObserver { NotificationCenter.default.removeObserver(scrollObserver) }
         }
 
@@ -137,6 +281,8 @@ struct MarkdownPreview: NSViewRepresentable {
                       let webView else { return }
                 let controller = webView.configuration.userContentController
                 controller.removeAllUserScripts()
+                controller.addUserScript(WKUserScript(source: CodexReference.previewScript,
+                                                     injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .defaultClient))
                 if let script = MermaidRuntime.script {
                     controller.addUserScript(
                         WKUserScript(source: script, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
@@ -208,6 +354,7 @@ struct MarkdownPreview: NSViewRepresentable {
                 guard !Task.isCancelled,
                       self.renderGeneration == generation,
                       updateResult as? Bool == true else { return }
+                self.refreshMemories(force: true)
                 self.pendingPosition = nil
                 self.lastAppliedPosition = position
                 self.lastAppliedGuide = guide
@@ -290,6 +437,7 @@ struct MarkdownPreview: NSViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            refreshMemories(force: true)
             if scrollObserver == nil { startObservingScroll() }
             let position = pendingPosition ?? parent?.scrollPosition ?? ScrollPosition()
             pendingPosition = nil

@@ -120,8 +120,7 @@ struct ContentView: View {
                     Text(notice)
                         .font(.system(size: 12, weight: .medium))
                         .padding(.horizontal, 14).padding(.vertical, 8)
-                        .background(.ultraThickMaterial, in: Capsule())
-                        .shadow(color: .black.opacity(0.14), radius: 14, y: 6)
+                        .background(ContentSurface(theme: document.theme, radius: 12))
                         .padding(.bottom, 42)
                 }
                 .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -134,6 +133,7 @@ struct ContentView: View {
         .animation(reduceMotion ? nil : MirrorMotion.control, value: document.focusMode)
         .animation(reduceMotion ? nil : MirrorMotion.fast, value: isDropTarget)
         .animation(reduceMotion ? nil : MirrorMotion.control, value: document.externalConflict)
+        .tint(document.theme.accent)
         .preferredColorScheme(document.theme.isDark ? .dark : .light)
         .ignoresSafeArea(.container, edges: .top)
         .onDrop(of: [UTType.fileURL.identifier], isTargeted: $isDropTarget) { providers in
@@ -241,7 +241,7 @@ private struct MirrorNavigationRail: View {
         .padding(.top, 12)
         .padding(.bottom, 8)
         .frame(width: 58)
-        .background(railBackground)
+        .navigationGlass(radius: 0)
         .overlay(alignment: .trailing) { Divider().opacity(0.55) }
     }
 
@@ -252,8 +252,9 @@ private struct MirrorNavigationRail: View {
         Button(action: action) {
             railLabel(title, systemImage: systemImage)
                 .foregroundStyle(isActive ? document.theme.accent : Color.secondary)
-                .background(isActive ? document.theme.accent.opacity(document.theme.isDark ? 0.18 : 0.11) : .clear,
-                            in: RoundedRectangle(cornerRadius: 8))
+                .background {
+                    if isActive { ContentSurface(theme: document.theme, radius: 8) }
+                }
         }
         .buttonStyle(.plain)
         .help(Text(LocalizedStringKey(title)))
@@ -272,11 +273,6 @@ private struct MirrorNavigationRail: View {
         .contentShape(RoundedRectangle(cornerRadius: 8))
     }
 
-    private var railBackground: Color {
-        document.theme.isDark
-            ? document.theme.foreground.opacity(0.045)
-            : Color(hex: "#EBEAE5")
-    }
 }
 
 private struct ReadingProgressBar: View {
@@ -351,8 +347,8 @@ private struct DocumentTabBar: View {
             .buttonStyle(.plain).help("New tab").padding(.horizontal, 11)
         }
         .padding(.leading, 58)
-        .frame(height: 34)
-        .background(document.theme.isDark ? document.theme.foreground.opacity(0.026) : Color(hex: "#F2F1ED"))
+        .frame(height: 39)
+        .background(document.theme.workspaceCanvas)
         .overlay(alignment: .bottom) { Divider().opacity(0.45) }
     }
 }
@@ -394,9 +390,11 @@ private struct DocumentTabItem: View {
             .opacity(isActive || isHovered ? 0.75 : 0)
         }
         .font(.system(size: 10.5, weight: isActive ? .medium : .regular))
-        .padding(.leading, 10).padding(.trailing, 7).frame(height: 33)
+        .padding(.leading, 12).padding(.trailing, 14).frame(height: 29)
         .background {
-            if isHovered && !isActive {
+            if isActive {
+                ContentSurface(theme: document.theme, radius: 7)
+            } else if isHovered {
                 RoundedRectangle(cornerRadius: 5)
                     .fill(document.theme.foreground.opacity(document.theme.isDark ? 0.07 : 0.045))
                     .padding(.vertical, 3)
@@ -404,9 +402,10 @@ private struct DocumentTabItem: View {
         }
         .overlay(alignment: .bottom) {
             if isActive {
-                Rectangle().fill(document.theme.accent).frame(height: 2).padding(.horizontal, 7)
+                Capsule().fill(document.theme.accent.opacity(0.7)).frame(height: 2).padding(.horizontal, 12)
             }
         }
+        .padding(.horizontal, 3)
         .onHover { hovering in
             if reduceMotion {
                 isHovered = hovering
@@ -449,7 +448,10 @@ private struct WritingWorkspace: View {
                                        isMarkdown: document.isMarkdownDocument,
                                        language: document.editorLanguage,
                                        onInsertImages: document.insertImageFiles,
-                                       onPasteImage: document.insertPastedImage)
+                                       onPasteImage: document.insertPastedImage,
+                                       onReferenceToCodex: { text in
+                                           CodexReference.send(selection: text, title: document.title, fileURL: document.fileURL, theme: document.theme)
+                                       }, fileURL: document.fileURL)
                         if document.text.isEmpty {
                             Text(document.isMarkdownDocument ? "Start writing in Markdown…" : "Start writing…")
                                 .font(.system(size: CGFloat(document.typography.editorFontSize)))
@@ -460,6 +462,9 @@ private struct WritingWorkspace: View {
                         }
                     }
                 }
+                .clipShape(RoundedRectangle(cornerRadius: 7))
+                .background(ContentSurface(theme: document.theme, radius: 7))
+                .padding(14)
                 .frame(minWidth: 360)
                 .transition(.move(edge: .leading).combined(with: .opacity))
             }
@@ -476,6 +481,7 @@ private struct WritingWorkspace: View {
                 .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
+        .background(document.theme.workspaceCanvas)
         .animation(reduceMotion ? nil : MirrorMotion.panel, value: document.readerMode)
         .animation(reduceMotion ? nil : MirrorMotion.panel, value: document.showPreview)
         .animation(reduceMotion ? nil : MirrorMotion.control, value: document.focusMode)
@@ -496,9 +502,12 @@ private struct RenderedMarkdownContent: View {
                         preserveSingleLineBreaks: document.editorSettings.preserveSingleLineBreaks,
                         baseURL: document.fileURL?.deletingLastPathComponent(),
                         onOpenLocalFile: document.openFile,
+                        onReferenceToCodex: { text in
+                            CodexReference.send(selection: text, title: document.title, fileURL: document.fileURL, theme: document.theme)
+                        },
                         syncMode: document.editorSettings.scrollSyncMode,
                         scrollPosition: $scrollSync.position,
-                        scrollSource: $scrollSync.source)
+                        scrollSource: $scrollSync.source, fileURL: document.fileURL)
     }
 }
 
@@ -530,21 +539,13 @@ private struct PaperPreviewSurface: View {
                 let horizontalInset = paperHorizontalInset(for: proxy.size.width)
                 let desiredWidth = CGFloat(document.typography.contentWidth) + (presentation == .reader ? 154 : 112)
                 let paperWidth = min(desiredWidth, max(280, proxy.size.width - horizontalInset * 2))
-                // Keep the reading canvas continuous through the viewport. The
-                // document scrolls inside the paper instead of exposing fixed
-                // top and bottom card edges halfway through a long article.
-                let paperHeight = proxy.size.height + 2
+                // The document surface stays opaque; navigation materials do not affect source anchors.
+                let paperHeight = max(1, proxy.size.height - 28)
 
                 RenderedMarkdownContent(scrollSync: scrollSync)
                     .frame(width: paperWidth, height: paperHeight)
-                    .background(document.theme.background)
-                    .overlay {
-                        Rectangle()
-                            .stroke(Color(hex: document.theme.lineHex).opacity(0.9), lineWidth: 1)
-                    }
-                    .shadow(color: document.theme.isDark || presentation == .split ? .clear : .black.opacity(0.07),
-                            radius: 18,
-                            y: 8)
+                    .clipShape(ContentShape(radius: 7))
+                    .background(ContentSurface(theme: document.theme, radius: 7))
                     .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
             }
 
@@ -577,7 +578,7 @@ private struct PaperPreviewSurface: View {
     }
 
     private var readerCanvas: Color {
-        document.theme.isDark ? Color(hex: "#1D211F") : Color(hex: "#E9E6DF")
+        document.theme.workspaceCanvas
     }
 }
 
@@ -604,7 +605,7 @@ private struct ReaderToolDock: View {
             } label: {
                 toolLabel("textformat.size", help: "Typography")
             }
-            .dockMenuStyle()
+            .dockMenuStyle(theme: document.theme)
 
             Menu {
                 widthButton("Narrow", width: 620)
@@ -613,7 +614,7 @@ private struct ReaderToolDock: View {
             } label: {
                 toolLabel("arrow.left.and.right", help: "Reading width")
             }
-            .dockMenuStyle()
+            .dockMenuStyle(theme: document.theme)
 
             Menu {
                 ForEach(document.availableThemes) { theme in
@@ -630,7 +631,7 @@ private struct ReaderToolDock: View {
             } label: {
                 toolLabel("circle.lefthalf.filled", help: "Reading theme")
             }
-            .dockMenuStyle()
+            .dockMenuStyle(theme: document.theme)
 
             Button {
                 withMirrorAnimation(reduceMotion) { document.focusMode.toggle() }
@@ -654,7 +655,7 @@ private struct ReaderToolDock: View {
             } label: {
                 toolLabel("square.and.arrow.up", help: "Export")
             }
-            .dockMenuStyle()
+            .dockMenuStyle(theme: document.theme)
             .disabled(document.isExportingDocument)
         }
     }
@@ -680,22 +681,23 @@ private struct ReaderToolDock: View {
             .font(.system(size: 12, weight: .medium))
             .foregroundStyle(isActive ? Color.white : Color.secondary)
             .frame(width: 36, height: 36)
-            .background(isActive ? document.theme.accent : document.theme.background, in: Circle())
-            .overlay {
-                Circle().stroke(Color(hex: document.theme.lineHex), lineWidth: isActive ? 0 : 1)
+            .background {
+                if isActive { RoundedRectangle(cornerRadius: 10).fill(document.theme.accent) }
+                else { ContentSurface(theme: document.theme, radius: 10) }
             }
-            .shadow(color: document.theme.isDark ? .clear : .black.opacity(0.07), radius: 5, y: 2)
-            .contentShape(Circle())
+            .contentShape(RoundedRectangle(cornerRadius: 10))
             .help(Text(LocalizedStringKey(help)))
             .accessibilityLabel(Text(LocalizedStringKey(help)))
     }
 }
 
 private extension View {
-    func dockMenuStyle() -> some View {
+    func dockMenuStyle(theme: EditorTheme) -> some View {
         menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize()
+            .frame(width: 36, height: 36)
+            .navigationGlass(radius: 18)
     }
 }
 
@@ -717,7 +719,7 @@ private struct WorkspacePaneHeader: View {
         .foregroundStyle(.secondary)
         .padding(.horizontal, 16)
         .frame(height: 30)
-        .background(document.theme.foreground.opacity(document.theme.isDark ? 0.015 : 0.006))
+        .background(document.theme.workspaceCanvas.opacity(0.38))
         .overlay(alignment: .bottom) { Divider().opacity(0.35) }
     }
 }
@@ -770,27 +772,31 @@ private struct TopBar: View {
         .padding(.leading, 76)
         .padding(.trailing, 12)
         .frame(height: 54)
-        .background(topBarBackground)
+        .navigationGlass(radius: 0)
         .overlay(alignment: .bottom) { Divider().opacity(0.5) }
     }
 
-    private var topBarBackground: Color {
-        document.theme.isDark ? document.theme.background : Color(hex: "#F6F5F1")
-    }
 }
 
 private struct MirrorBrand: View {
+    private static let brandImage: NSImage = {
+        if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+           let image = NSImage(contentsOf: url) { return image }
+        // Support swift run as well as the packaged application.
+        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Resources/AppIcon.png")
+        return NSImage(contentsOf: source) ?? NSImage(named: NSImage.applicationIconName) ?? NSImage()
+    }()
+
     var body: some View {
         HStack(spacing: 8) {
-            Text("觅")
-                .font(.custom("STXingkaiSC-Light", size: 19))
-                .foregroundStyle(Color(hex: "#C56B32"))
-                .frame(width: 29, height: 29)
-                .background(Color(hex: "#EEE4CF"), in: RoundedRectangle(cornerRadius: 8))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color(hex: "#DFD1B6"), lineWidth: 1)
-                }
+            Image(nsImage: Self.brandImage)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+                .frame(width: 34, height: 34)
+                .accessibilityHidden(true)
             Text("Mirror")
                 .font(.system(size: 15, weight: .semibold))
                 .fixedSize()
@@ -849,7 +855,7 @@ private struct WorkspaceModeControl: View {
             }
         }
         .padding(2)
-        .background(.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 7))
+        .navigationGlass(radius: 18)
         .disabled(document.previewFileURL != nil || !document.isMarkdownDocument)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Workspace mode")
@@ -873,12 +879,13 @@ private struct WorkspaceModeControl: View {
                     }
                 }
             }
-                .font(.system(size: 9.5, weight: .medium))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(isActive ? document.theme.accent : .secondary)
                 .padding(.horizontal, compact ? 6 : 7)
-                .frame(height: 24)
-                .background(isActive ? document.theme.background : Color.clear,
-                            in: RoundedRectangle(cornerRadius: 5))
+                .frame(height: 28)
+                .background {
+                    if isActive { ContentSurface(theme: document.theme, radius: 7) }
+                }
         }
         .buttonStyle(.plain)
         .animation(reduceMotion ? nil : MirrorMotion.control, value: isActive)
@@ -1057,7 +1064,7 @@ private struct SidebarView: View {
                 .font(.system(size: 10.5))
                 .padding(.horizontal, 8)
                 .frame(height: 30)
-                .background(.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 6))
+                .background(ContentSurface(theme: document.theme, radius: 7))
                 .padding(.horizontal, 12).padding(.bottom, 8)
 
                 List(selection: $workspaceSelection) {
@@ -1146,7 +1153,7 @@ private struct SidebarView: View {
             .padding(.horizontal, 13).frame(height: 28)
             .overlay(alignment: .top) { Divider().opacity(0.45) }
         }
-        .background(document.theme.isDark ? document.theme.foreground.opacity(0.045) : Color(hex: "#F2F1ED"))
+        .navigationGlass(radius: 0)
     }
 
     private func acceptDrop(_ providers: [NSItemProvider], into directory: URL) -> Bool {
@@ -1186,8 +1193,11 @@ private struct SidebarEmptyState: View {
     var body: some View {
         VStack(spacing: 7) {
             Image(systemName: systemImage)
-                .font(.system(size: 17, weight: .light))
-                .foregroundStyle(document.theme.accent.opacity(0.75))
+                .font(.system(size: 20, weight: .light))
+                .foregroundStyle(document.theme.accent)
+                .frame(width: 48, height: 52)
+                .background(ContentSurface(theme: document.theme, radius: 8))
+                .padding(.bottom, 5)
             Text(LocalizedStringKey(title))
                 .font(.system(size: 10.5, weight: .medium))
             Text(LocalizedStringKey(detail))
@@ -1217,8 +1227,8 @@ private struct QuietRowSurface: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background {
-                RoundedRectangle(cornerRadius: 5)
-                    .fill(surfaceColor)
+                if isSelected { ContentSurface(theme: document.theme, radius: 6) }
+                else { RoundedRectangle(cornerRadius: 6).fill(surfaceColor) }
             }
             .onHover { hovering in
                 if reduceMotion {
@@ -1333,7 +1343,7 @@ private struct OutlinePane: View {
             .frame(height: 40)
             .overlay(alignment: .top) { Divider().opacity(0.4) }
         }
-        .background(document.theme.isDark ? document.theme.foreground.opacity(0.035) : Color(hex: "#F2F1ED"))
+        .navigationGlass(radius: 0)
     }
 }
 
@@ -1566,7 +1576,7 @@ private struct StatusBar: View {
         }
         .font(.system(size: 9.5, weight: .medium)).foregroundStyle(.secondary)
         .padding(.horizontal, 14).frame(height: 28)
-        .background(document.theme.isDark ? document.theme.foreground.opacity(0.018) : Color(hex: "#F6F5F1"))
+        .background(document.theme.background)
         .overlay(alignment: .top) { Divider().opacity(0.45) }
     }
 
@@ -1696,7 +1706,7 @@ private struct QuickOpenView: View {
             .font(.caption).foregroundStyle(.secondary).padding(10)
         }
         .frame(width: 620, height: 430)
-        .background(document.theme.background)
+        .nativeDialog(theme: document.theme)
         .preferredColorScheme(document.theme.isDark ? .dark : .light)
         .onAppear { searchFocused = true }
     }
@@ -1818,7 +1828,7 @@ private struct WorkspaceSearchView: View {
             .font(.caption).foregroundStyle(.secondary).padding(10)
         }
         .frame(width: 720, height: 520)
-        .background(document.theme.background)
+        .nativeDialog(theme: document.theme)
         .preferredColorScheme(document.theme.isDark ? .dark : .light)
         .onAppear {
             searchFocused = true

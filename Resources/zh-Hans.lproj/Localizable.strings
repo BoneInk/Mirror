@@ -250,3 +250,14 @@
 "Smart (35%)" = "智能（35%）";
 "Top" = "顶部对齐";
 "Off" = "关闭";
+
+/* Codex document references */
+"Reference to Codex" = "引用并打开 Codex 小窗";
+"Open Codex Chat" = "打开新的 Codex 小窗";
+
+"Ask Codex" = "问 Codex";
+
+"Ask Agent" = "提问";
+
+"Open Agent Chat" = "打开智能体对话";
+"Ask About Selection" = "引用提问";

@@ -19,18 +19,19 @@ struct MarkdownTableBuilderView: View {
                 }
             }
 
-            Form {
+            VStack(spacing: 12) {
                 LabeledContent("Columns") {
                     Stepper("\(columns)", value: $columns, in: 2...10)
                         .fixedSize()
                 }
+                Divider()
                 LabeledContent("Body rows") {
                     Stepper("\(bodyRows)", value: $bodyRows, in: 1...20)
                         .fixedSize()
                 }
             }
-            .formStyle(.grouped)
-            .frame(height: 108)
+            .padding(16)
+            .background { ContentSurface(theme: document.theme) }
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("COLUMN ALIGNMENT")
@@ -60,6 +61,7 @@ struct MarkdownTableBuilderView: View {
                     Text(previewText)
                         .font(.system(size: 10.5, design: .monospaced))
                         .textSelection(.enabled)
+                        .fixedSize(horizontal: true, vertical: true)
                         .padding(12)
                         .background(Color(hex: document.theme.codeHex), in: RoundedRectangle(cornerRadius: 8))
                         .overlay { RoundedRectangle(cornerRadius: 8).stroke(Color(hex: document.theme.lineHex)) }
@@ -79,14 +81,13 @@ struct MarkdownTableBuilderView: View {
                     document.insertMarkdownTable(columns: columns, bodyRows: bodyRows, alignments: alignments)
                     dismiss()
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(document.theme.accent)
+                .buttonStyle(NativeActionStyle(theme: document.theme, prominent: true))
                 .keyboardShortcut(.defaultAction)
             }
         }
         .padding(20)
-        .frame(width: 620, height: 500)
-        .background(document.theme.background)
+        .frame(width: 620, height: 540)
+        .nativeDialog(theme: document.theme)
         .preferredColorScheme(document.theme.isDark ? .dark : .light)
         .onChange(of: columns) { _, value in
             if alignments.count < value {
