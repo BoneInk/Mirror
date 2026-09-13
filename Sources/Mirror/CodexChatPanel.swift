@@ -37,8 +37,8 @@ final class CodexChatModel: ObservableObject {
     private var memoryGeneration: Int
     private var submittedReference = false
 
-    init(reference: DocumentReference?, directory: URL, theme: EditorTheme = .paper, server: CodexAppServer? = nil, memory: CodexMemoryStore? = nil, restored: CodexMemoryRecord? = nil) {
-        self.agent = restored?.agentProfile ?? (restored != nil || server != nil ? .preset(.codex) : AgentConfigurationStore.shared.selected)
+    init(reference: DocumentReference?, directory: URL, theme: EditorTheme = .paper, server: CodexAppServer? = nil, memory: CodexMemoryStore? = nil, restored: CodexMemoryRecord? = nil, agents: AgentConfigurationStore? = nil) {
+        self.agent = restored?.agentProfile ?? (restored != nil || server != nil ? .preset(.codex) : (agents ?? .shared).selected)
         self.memory = memory ?? .shared
         self.memoryGeneration = (memory ?? .shared).generation
         self.memoryID = restored?.id ?? UUID()
@@ -84,6 +84,15 @@ final class CodexChatModel: ObservableObject {
         if memory.delete(ids: [memoryID]) { return true }
         error = memory.error ?? "无法删除这条记录。"
         return false
+    }
+
+    /// Only an explicit picker action changes the default; restoring history never does.
+    func chooseAgent(_ profile: AgentProfile, store: AgentConfigurationStore? = nil) {
+        let store = store ?? .shared
+        guard !isRunning, store.profiles.contains(where: { $0.id == profile.id }) else { return }
+        if messages.isEmpty { selectAgent(profile) }
+        else { startNewConversation(with: profile) }
+        store.selectedID = profile.id
     }
 
     func selectAgent(_ profile: AgentProfile) {
@@ -537,8 +546,7 @@ private struct CodexChatView: View {
                 Menu {
                     ForEach(agents.profiles) { profile in
                         Button(model.messages.isEmpty ? profile.name : "新对话 · " + profile.name) {
-                            if model.messages.isEmpty { model.selectAgent(profile) }
-                            else { model.startNewConversation(with: profile) }
+                            model.chooseAgent(profile, store: agents)
                         }.disabled(model.isRunning)
                     }
                     if model.remembered {
