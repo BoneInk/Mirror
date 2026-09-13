@@ -26,7 +26,7 @@ Task { @MainActor in
     try? await Task.sleep(for: .milliseconds(600))
     guard let firstWindow = first.presentedWindow, let editor = input(in: firstWindow.contentView) else { fatalError("Missing input") }
     precondition(firstWindow.isKeyWindow && firstWindow.firstResponder === editor, "Input must be focused after popover opens")
-    precondition(editor.isEditable && editor.insertionPointColor == .controlAccentColor)
+    precondition(editor.isEditable && editor.insertionPointColor == NSColor(EditorTheme.paper.accent))
     editor.insertText("中文 test", replacementRange: editor.selectedRange())
     precondition(first.model.draft == "中文 test", "Native input binding did not update")
 

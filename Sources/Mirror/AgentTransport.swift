@@ -53,6 +53,10 @@ final class AgentTransport {
             default: throw CodexConnectionError(message: "此智能体需配置 HTTP 地址或自定义包装命令。")
             }
             if !profile.model.isEmpty { arguments += ["--model", profile.model] }
+            if let effort = profile.reasoningEffort, profile.effortOptions.contains(effort) {
+                if profile.kind == .claude { arguments += ["--effort", effort] }
+                if profile.kind == .pi { arguments += ["--thinking", effort] }
+            }
         }
         // Cursor documents a positional prompt. Bound argv size before spawning on macOS.
         let promptInArguments = profile.connection == .native && profile.kind == .cursor

@@ -60,6 +60,18 @@ struct AgentProfile: Codable, Identifiable, Equatable {
     var arguments = "[]"
     var endpoint = ""
     var model = ""
+    // Optional for compatibility with existing settings and conversation snapshots.
+    var reasoningEffort: String? = nil
+    var supportsModelSelection: Bool { connection == .native || connection == .smartwork || connection == .chatCompletions }
+    var effortOptions: [String] {
+        guard connection == .native else { return [] }
+        switch kind {
+        case .codex: return ["none", "minimal", "low", "medium", "high", "xhigh"]
+        case .claude: return ["low", "medium", "high", "xhigh", "max"]
+        case .pi: return ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
+        default: return []
+        }
+    }
     static func preset(_ kind: AgentKind) -> Self {
         var result = Self(id: kind.rawValue, kind: kind, name: kind.title,
                           connection: kind.supportsNative ? .native : .chatCompletions)
@@ -348,6 +360,13 @@ struct AgentProfileEditor: View {
                         Text("复用本机 CLI 登录。Mirror 使用阅读问答模式；请先在终端完成 CLI 安装和登录。")
                             .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
+                }
+                if !profile.effortOptions.isEmpty {
+                    Picker("思考深度", selection: Binding(get: { profile.reasoningEffort ?? "" }, set: { profile.reasoningEffort = $0.isEmpty ? nil : $0 })) {
+                        Text("智能体默认").tag("")
+                        ForEach(profile.effortOptions, id: \.self) { Text($0).tag($0) }
+                    }
+                    Text("可用深度取决于所选模型与本机 CLI 版本。").font(.caption).foregroundStyle(.secondary)
                 }
             }.textFieldStyle(.roundedBorder)
             if let error { Text(error).font(.caption).foregroundStyle(.red) }

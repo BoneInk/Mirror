@@ -95,6 +95,21 @@ final class CodexChatModel: ObservableObject {
         store.selectedID = profile.id
     }
 
+    func configureGeneration(model: String, effort: String?, store: AgentConfigurationStore? = nil) {
+        guard !isRunning else { return }
+        let store = store ?? .shared
+        guard var profile = store.profiles.first(where: { $0.id == agent.id }) else { return }
+        if profile.supportsModelSelection { profile.model = model.trimmingCharacters(in: .whitespacesAndNewlines) }
+        profile.reasoningEffort = effort.flatMap { profile.effortOptions.contains($0) ? $0 : nil }
+        guard profile.validation == nil else { error = profile.validation; return }
+        error = nil
+        guard profile != agent else { return }
+        let draft = self.draft
+        store.save(profile)
+        chooseAgent(profile, store: store)
+        self.draft = draft
+    }
+
     func selectAgent(_ profile: AgentProfile) {
         guard messages.isEmpty, !isRunning else { return }
         agent = profile
@@ -157,6 +172,7 @@ final class CodexChatModel: ObservableObject {
                 status = "Codex 正在思考…"
                 _ = try await server.request("turn/start", ["threadId": threadID,
                     "input": [["type": "text", "text": prompt]],
+                    "effort": agent.reasoningEffort as Any? ?? NSNull(),
                     "approvalPolicy": "never", "sandboxPolicy": ["type": "readOnly"]])
                 if previousReference != nil { submittedReference = true }
                 saveMemory()
@@ -380,9 +396,9 @@ final class CodexChatPanel: NSWindowController, NSWindowDelegate, NSPopoverDeleg
     }
 
     private func chatView() -> CodexChatView {
-        CodexChatView(model: model, close: { [weak self] in self?.close() }, resize: { [weak self] expanded in
+        CodexChatView(model: model, close: { [weak self] in self?.close() }, resize: { [weak self] height in
             guard let self else { return }
-            let size = NSSize(width: 420, height: expanded ? 480 : 216)
+            let size = NSSize(width: 420, height: height)
             if let popover = self.popover { popover.contentSize = size }
             else { self.window?.setContentSize(NSSize(width: size.width, height: size.height + 24)) }
         })
@@ -520,9 +536,12 @@ final class CodexChatPanel: NSWindowController, NSWindowDelegate, NSPopoverDeleg
 
 private struct CodexChatView: View {
     @ObservedObject private var agents = AgentConfigurationStore.shared
+    @State private var configuring = false
+    @State private var draftModel = ""
+    @State private var draftEffort = ""
     @ObservedObject var model: CodexChatModel
     let close: () -> Void
-    let resize: (Bool) -> Void
+    let resize: (CGFloat) -> Void
     @State private var inputFocused = false
 
     private var source: DocumentReference? {
@@ -556,6 +575,11 @@ private struct CodexChatView: View {
                 } label: { Text(model.agent.name).font(.system(size: 13, weight: .semibold)) }
                 .menuStyle(.borderlessButton).fixedSize()
                 .help("选择智能体、另起对话或删除本机记录")
+                Button {
+                    draftModel = model.agent.model; draftEffort = model.agent.reasoningEffort ?? ""
+                    configuring.toggle()
+                } label: { Image(systemName: "slider.horizontal.3") }
+                .help("模型与思考深度").accessibilityLabel("模型与思考深度").disabled(model.isRunning)
                 Spacer()
                 if model.agent.kind == .codex { Button { model.openInCodex() } label: { Image(systemName: "arrow.up.right.square") }
                     .help("在 Codex 中打开").accessibilityLabel("在 Codex 中打开").disabled(model.isRunning) }
@@ -566,6 +590,29 @@ private struct CodexChatView: View {
                 Button(action: close) { Image(systemName: "xmark") }
                     .help("关闭对话").accessibilityLabel("关闭对话")
             }.buttonStyle(.borderless).foregroundStyle(.secondary)
+            if configuring {
+                VStack(alignment: .leading, spacing: 8) {
+                    if model.agent.supportsModelSelection {
+                        TextField("模型 ID（留空使用智能体默认值）", text: $draftModel).textFieldStyle(.roundedBorder)
+                            .accessibilityLabel("模型 ID")
+                    } else { Text("模型由智能体管理").font(.caption).foregroundStyle(.secondary) }
+                    HStack {
+                        if !model.agent.effortOptions.isEmpty {
+                            Picker("思考深度", selection: $draftEffort) {
+                                Text("智能体默认").tag("")
+                                ForEach(model.agent.effortOptions, id: \.self) { Text($0).tag($0) }
+                            }
+                        } else { Text("思考深度由智能体管理").font(.caption).foregroundStyle(.secondary) }
+                        Spacer()
+                        Button("应用") {
+                            model.configureGeneration(model: draftModel, effort: draftEffort.isEmpty ? nil : draftEffort, store: agents)
+                            if model.error == nil { configuring = false }
+                        }.disabled(model.isRunning)
+                    }
+                    Text(model.messages.isEmpty ? "保存为此智能体的默认配置；可用参数取决于模型。" : "应用后开启新对话；原记录保留，草稿不丢失。")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+            }
             if let source {
                 HStack(alignment: .top, spacing: 8) {
                     Capsule().fill(.secondary.opacity(0.35)).frame(width: 2)
@@ -594,7 +641,7 @@ private struct CodexChatView: View {
                                     if message.isUser { Spacer(minLength: 44) }
                                     Text(displayedText(message)).font(.system(size: 13))
                                         .textSelection(.enabled).padding(.horizontal, 12).padding(.vertical, 9)
-                                        .background(message.isUser ? Color.accentColor.opacity(0.12) : Color.primary.opacity(0.045),
+                                        .background(message.isUser ? model.theme.accent.opacity(0.12) : Color.primary.opacity(0.045),
                                                     in: RoundedRectangle(cornerRadius: 16))
                                         .accessibilityLabel(message.isUser ? "你" : model.agent.name)
                                     if !message.isUser { Spacer(minLength: 28) }
@@ -621,7 +668,7 @@ private struct CodexChatView: View {
                             .font(.system(size: 13)).foregroundStyle(.tertiary)
                             .padding(.top, 8).padding(.leading, 5).allowsHitTesting(false)
                     }
-                    CodexInput(text: $model.draft, focused: $inputFocused, enabled: !model.isRunning,
+                    CodexInput(text: $model.draft, focused: $inputFocused, enabled: !model.isRunning, accent: model.theme.accent,
                                submit: model.send, close: close)
                         .frame(height: 54)
                 }
@@ -636,10 +683,11 @@ private struct CodexChatView: View {
             }.buttonStyle(.borderedProminent).controlSize(.small)
                 .padding(8).background(.background.opacity(0.65), in: RoundedRectangle(cornerRadius: 16))
                 .overlay(RoundedRectangle(cornerRadius: 16)
-                    .stroke(inputFocused ? Color.accentColor.opacity(0.45) : Color.clear, lineWidth: 1))
+                    .stroke(inputFocused ? model.theme.accent.opacity(0.45) : Color.clear, lineWidth: 1))
         }
         .padding(16)
         .foregroundStyle(.primary)
+        .tint(model.theme.accent)
         .preferredColorScheme(model.theme.isDark ? .dark : .light)
         .contextMenu {
             if model.remembered {
@@ -647,9 +695,11 @@ private struct CodexChatView: View {
             }
         }
         .onExitCommand(perform: close)
+        .onChange(of: model.agent.id) { _, _ in configuring = false }
         .onChange(of: model.recordDeleted) { _, deleted in if deleted { close() } }
-        .onAppear { resize(!model.messages.isEmpty) }
-        .onChange(of: model.messages.isEmpty) { _, empty in resize(!empty) }
+        .onAppear { resize((model.messages.isEmpty ? 216 : 480) + (configuring ? 104 : 0)) }
+        .onChange(of: configuring) { _, value in resize((model.messages.isEmpty ? 216 : 480) + (value ? 104 : 0)) }
+        .onChange(of: model.messages.isEmpty) { _, empty in resize((empty ? 216 : 480) + (configuring ? 104 : 0)) }
     }
 }
 
@@ -657,6 +707,7 @@ private struct CodexInput: NSViewRepresentable {
     @Binding var text: String
     @Binding var focused: Bool
     let enabled: Bool
+    let accent: Color
     let submit: () -> Void
     let close: () -> Void
 
@@ -671,7 +722,7 @@ private struct CodexInput: NSViewRepresentable {
         input.drawsBackground = false
         input.font = .systemFont(ofSize: 13)
         input.textColor = .labelColor
-        input.insertionPointColor = .controlAccentColor
+        input.insertionPointColor = NSColor(accent)
         input.textContainerInset = NSSize(width: 0, height: 8)
         input.isVerticallyResizable = true
         input.isHorizontallyResizable = false
@@ -688,6 +739,7 @@ private struct CodexInput: NSViewRepresentable {
         guard let input = scroll.documentView as? CodexInputTextView else { return }
         if input.string != text { input.string = text }
         let becameEnabled = !input.isEditable && enabled
+        input.insertionPointColor = NSColor(accent)
         input.isEditable = enabled
         input.submit = submit
         input.close = close

@@ -7,6 +7,9 @@ assert 'Mirror' in prompt
 kind = os.path.basename(sys.argv[0])
 def emit(value):
     print(json.dumps(value, ensure_ascii=False), flush=True)
+if kind in ['claude', 'pi']:
+    assert sys.argv[sys.argv.index('--model') + 1] == 'fixture-model'
+    assert sys.argv[sys.argv.index('--effort' if kind == 'claude' else '--thinking') + 1] == 'high'
 if kind in ['claude', 'codebuddy']:
     assert sys.argv[sys.argv.index('--tools') + 1] == ''
     assert '--strict-mcp-config' in sys.argv

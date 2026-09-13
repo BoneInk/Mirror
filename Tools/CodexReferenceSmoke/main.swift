@@ -168,6 +168,9 @@ MainActor.assumeIsolated {
             try await server.connect(executable: executable)
             let model = CodexChatModel(reference: reference, directory: URL(fileURLWithPath: "/tmp"), server: server, memory: memory)
             precondition(model.messages.isEmpty && model.threadID == nil && model.reference != nil)
+            var generationProfile = AgentProfile.preset(.codex)
+            generationProfile.model = "fixture-model"; generationProfile.reasoningEffort = "high"
+            model.selectAgent(generationProfile)
             model.draft = "Explain this"
             model.send()
             model.dismissFromUI()

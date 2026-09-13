@@ -15,6 +15,7 @@ Task { @MainActor in
             var profile = AgentProfile.preset(kind)
             profile.executable = directory.appendingPathComponent(kind.rawValue).path
             if kind == .custom { profile.connection = .command }
+            if kind == .claude || kind == .pi { profile.model = "fixture-model"; profile.reasoningEffort = "high" }
             var text = ""
             try await AgentTransport().run(profile: profile, messages: [user], directory: directory) { text = $0 }
             check(text == "你好🪞", "CLI parser failed: \(kind) \(text)")
@@ -87,6 +88,19 @@ Task { @MainActor in
         check(next.agent.kind == .claude, "Next bubble uses remembered choice")
         let old = CodexChatModel(reference: reference, directory: directory, memory: memory, restored: record, agents: store)
         check(old.agent == custom && store.selectedID == "claude", "Reviewing history preserves provider and does not change the default")
+        picker.draft = "保留草稿"
+        picker.configureGeneration(model: "fixture-model", effort: "high", store: store)
+        check(picker.agent.model == "fixture-model" && picker.agent.reasoningEffort == "high" && picker.draft == "保留草稿", "Bubble applies options and preserves draft")
+        let savedOptions = AgentConfigurationStore(defaults: defaults).selected
+        check(savedOptions.model == "fixture-model" && savedOptions.reasoningEffort == "high", "Model and effort persist in settings")
+        var oldJSON = try JSONSerialization.jsonObject(with: JSONEncoder().encode(savedOptions)) as! [String: Any]
+        oldJSON.removeValue(forKey: "reasoningEffort")
+        let decodedLegacy = try JSONDecoder().decode(AgentProfile.self, from: JSONSerialization.data(withJSONObject: oldJSON))
+        check(decodedLegacy.reasoningEffort == nil, "Legacy profile without effort decodes")
+        picker.isRunning = true
+        picker.configureGeneration(model: "ignored", effort: "low", store: store)
+        check(picker.agent.model == "fixture-model", "Running turn prevents parameter changes")
+        picker.isRunning = false
         picker.isRunning = true; picker.chooseAgent(.preset(.codex), store: store)
         check(store.selectedID == "claude", "Unavailable picker action does not change the default")
         picker.shutdown(); next.shutdown(); old.shutdown()

@@ -767,7 +767,7 @@ private final class MirrorTextView: NSTextView {
             let button = NSButton(image: NSImage(systemSymbolName: "bubble.left.fill", accessibilityDescription: "回顾对话")!, target: self, action: #selector(openMemory(_:)))
             button.identifier = NSUserInterfaceItemIdentifier(record.id.uuidString)
             button.isBordered = false
-            button.contentTintColor = .controlAccentColor
+            button.contentTintColor = insertionPointColor
             button.toolTip = "回顾对话：" + String(record.quote.prefix(60))
             button.frame = NSRect(x: max(2, textContainerOrigin.x - 28), y: rect.minY, width: 18, height: 18)
             addSubview(button); memoryButtons.append(button); occupied[row] = button; memoryGroups[record.id.uuidString] = [record.id]

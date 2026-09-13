@@ -36,6 +36,8 @@ for line in sys.stdin:
     elif method == 'turn/start':
         assert params['threadId'] == thread
         text = params['input'][0]['text']
+        if 'Explain this' in text:
+            assert params['effort'] == 'high'
         if 'FAIL_TEST' in text:
             emit({'id': rid, 'error': {'code': -1, 'message': 'Simulated failure'}})
             continue
