@@ -391,3 +391,76 @@ struct AgentProfileEditor: View {
     }
 
 }
+
+struct AgentModelOption: Identifiable, Equatable {
+    let id: String
+    let name: String
+    let isDefault: Bool
+    let efforts: [String]?
+}
+
+/// Queries metadata only, using a separate connection from the conversation.
+@MainActor
+enum AgentModelCatalog {
+    static func supports(_ profile: AgentProfile) -> Bool {
+        profile.connection == .smartwork || profile.connection == .chatCompletions ||
+            (profile.connection == .native && profile.kind == .codex)
+    }
+
+    static func parse(_ object: [String: Any], codex: Bool = false, smartwork: Bool = false) -> [AgentModelOption] {
+        let rows = object[smartwork ? "models" : "data"] as? [[String: Any]] ?? []
+        var seen = Set<String>()
+        return rows.compactMap { row in
+            guard row["hidden"] as? Bool != true,
+                  let id = (codex ? row["model"] : row["id"]) as? String, !id.isEmpty,
+                  seen.insert(id).inserted else { return nil }
+            let efforts = codex ? (row["supportedReasoningEfforts"] as? [[String: Any]])?.compactMap { $0["reasoningEffort"] as? String } : nil
+            return AgentModelOption(id: id, name: row["displayName"] as? String ?? row["label"] as? String ?? id,
+                isDefault: row["isDefault"] as? Bool ?? row["default"] as? Bool ?? false, efforts: efforts)
+        }
+    }
+
+    static func fetch(_ profile: AgentProfile, credential: (String) -> String = AgentCredential.read) async throws -> [AgentModelOption] {
+        guard supports(profile) else { return [] }
+        if profile.connection == .native {
+            let server = CodexAppServer()
+            let deadline = Task { @MainActor in
+                try await Task.sleep(for: .seconds(10))
+                server.close()
+            }
+            defer { deadline.cancel(); server.close() }
+            try await server.connect(executable: AgentConfigurationStore.executable(for: profile))
+            var result: [AgentModelOption] = [], cursor: String?, cursors = Set<String>()
+            repeat {
+                try Task.checkCancellation()
+                var params: [String: Any] = ["limit": 100]
+                if let cursor { params["cursor"] = cursor }
+                let response = try await server.request("model/list", params)
+                result += parse(response, codex: true)
+                cursor = response["nextCursor"] as? String
+                if let cursor, !cursors.insert(cursor).inserted { break }
+            } while cursor != nil && cursors.count < 20
+            var seen = Set<String>()
+            return result.filter { seen.insert($0.id).inserted }
+        }
+        guard let base = URL(string: profile.endpoint), ["http", "https"].contains(base.scheme ?? ""),
+              base.host != nil, base.user == nil, base.password == nil else {
+            throw CodexConnectionError(message: "请先配置智能体服务地址。")
+        }
+        let smartwork = profile.connection == .smartwork
+        var request = URLRequest(url: base.appendingPathComponent(smartwork ? "api/agent/models" : "models"))
+        request.timeoutInterval = 8
+        let token = credential(profile.id)
+        if !token.isEmpty { request.setValue(smartwork ? token : "Bearer \(token)", forHTTPHeaderField: smartwork ? "x-auth-token" : "Authorization") }
+        let client = URLSession(configuration: .ephemeral, delegate: AgentNoRedirect(), delegateQueue: nil)
+        defer { client.invalidateAndCancel() }
+        let (data, response) = try await client.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw CodexConnectionError(message: "模型列表暂不可用，请检查服务与认证；仍可手动填写。")
+        }
+        guard data.count < 2_000_000, let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw CodexConnectionError(message: "模型列表格式无法识别；仍可手动填写。")
+        }
+        return parse(object, smartwork: smartwork)
+    }
+}

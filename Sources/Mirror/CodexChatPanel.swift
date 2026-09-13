@@ -95,12 +95,12 @@ final class CodexChatModel: ObservableObject {
         store.selectedID = profile.id
     }
 
-    func configureGeneration(model: String, effort: String?, store: AgentConfigurationStore? = nil) {
+    func configureGeneration(model: String, effort: String?, availableEfforts: [String]? = nil, store: AgentConfigurationStore? = nil) {
         guard !isRunning else { return }
         let store = store ?? .shared
         guard var profile = store.profiles.first(where: { $0.id == agent.id }) else { return }
         if profile.supportsModelSelection { profile.model = model.trimmingCharacters(in: .whitespacesAndNewlines) }
-        profile.reasoningEffort = effort.flatMap { profile.effortOptions.contains($0) ? $0 : nil }
+        profile.reasoningEffort = effort.flatMap { (availableEfforts ?? profile.effortOptions).contains($0) ? $0 : nil }
         guard profile.validation == nil else { error = profile.validation; return }
         error = nil
         guard profile != agent else { return }
@@ -539,6 +539,14 @@ private struct CodexChatView: View {
     @State private var configuring = false
     @State private var draftModel = ""
     @State private var draftEffort = ""
+    @State private var catalog: [AgentModelOption] = []
+    @State private var catalogStatus = ""
+    @State private var loadingCatalog = false
+    @State private var catalogRefresh = 0
+    private var availableEfforts: [String] {
+        let option = draftModel.isEmpty ? catalog.first(where: { $0.isDefault }) : catalog.first(where: { $0.id == draftModel })
+        return option?.efforts ?? model.agent.effortOptions
+    }
     @ObservedObject var model: CodexChatModel
     let close: () -> Void
     let resize: (CGFloat) -> Void
@@ -593,19 +601,35 @@ private struct CodexChatView: View {
             if configuring {
                 VStack(alignment: .leading, spacing: 8) {
                     if model.agent.supportsModelSelection {
-                        TextField("模型 ID（留空使用智能体默认值）", text: $draftModel).textFieldStyle(.roundedBorder)
-                            .accessibilityLabel("模型 ID")
+                        HStack {
+                            TextField("模型 ID（留空使用智能体默认值）", text: $draftModel).textFieldStyle(.roundedBorder)
+                                .accessibilityLabel("模型 ID")
+                            if !catalog.isEmpty {
+                                Menu("可用模型") {
+                                    Button("智能体默认") { draftModel = ""; draftEffort = "" }
+                                    ForEach(catalog) { option in
+                                        Button(option.name + (option.isDefault ? " · 默认" : "")) { draftModel = option.id; draftEffort = "" }
+                                    }
+                                }.fixedSize()
+                            }
+                            if AgentModelCatalog.supports(model.agent) {
+                                Button { catalogRefresh += 1 } label: { Image(systemName: "arrow.clockwise") }
+                                    .help("刷新可用模型").disabled(loadingCatalog)
+                            }
+                        }
+                        Text(loadingCatalog ? "正在读取可用模型…" : catalogStatus)
+                            .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                     } else { Text("模型由智能体管理").font(.caption).foregroundStyle(.secondary) }
                     HStack {
-                        if !model.agent.effortOptions.isEmpty {
+                        if !availableEfforts.isEmpty {
                             Picker("思考深度", selection: $draftEffort) {
                                 Text("智能体默认").tag("")
-                                ForEach(model.agent.effortOptions, id: \.self) { Text($0).tag($0) }
+                                ForEach(availableEfforts, id: \.self) { Text($0).tag($0) }
                             }
                         } else { Text("思考深度由智能体管理").font(.caption).foregroundStyle(.secondary) }
                         Spacer()
                         Button("应用") {
-                            model.configureGeneration(model: draftModel, effort: draftEffort.isEmpty ? nil : draftEffort, store: agents)
+                            model.configureGeneration(model: draftModel, effort: draftEffort.isEmpty ? nil : draftEffort, availableEfforts: availableEfforts, store: agents)
                             if model.error == nil { configuring = false }
                         }.disabled(model.isRunning)
                     }
@@ -694,12 +718,33 @@ private struct CodexChatView: View {
                 Button("删除气泡记录", systemImage: "trash", role: .destructive) { if model.deleteMemory() { close() } }
             }
         }
+        .task(id: "\(configuring)-\(model.agent.id)-\(catalogRefresh)") {
+            guard configuring else { return }
+            catalog = []
+            guard AgentModelCatalog.supports(model.agent) else {
+                catalogStatus = "此接入尚不支持自动查询，可手动配置。"; return
+            }
+            loadingCatalog = true
+            defer { loadingCatalog = false }
+            do {
+                let options = try await AgentModelCatalog.fetch(model.agent)
+                try Task.checkCancellation()
+                catalog = options
+                catalogStatus = options.isEmpty ? "服务未返回模型，仍可手动填写。" : "已读取 \(options.count) 个模型；深度按接口返回值显示。"
+                if !draftEffort.isEmpty && !availableEfforts.contains(draftEffort) { draftEffort = "" }
+            } catch {
+                if !Task.isCancelled { catalogStatus = "读取失败，仍可手动填写；可点击刷新重试。" }
+            }
+        }
+        .onChange(of: draftModel) { _, _ in
+            if !draftEffort.isEmpty && !availableEfforts.contains(draftEffort) { draftEffort = "" }
+        }
         .onExitCommand(perform: close)
         .onChange(of: model.agent.id) { _, _ in configuring = false }
         .onChange(of: model.recordDeleted) { _, deleted in if deleted { close() } }
-        .onAppear { resize((model.messages.isEmpty ? 216 : 480) + (configuring ? 104 : 0)) }
-        .onChange(of: configuring) { _, value in resize((model.messages.isEmpty ? 216 : 480) + (value ? 104 : 0)) }
-        .onChange(of: model.messages.isEmpty) { _, empty in resize((empty ? 216 : 480) + (configuring ? 104 : 0)) }
+        .onAppear { resize((model.messages.isEmpty ? 216 : 480) + (configuring ? 132 : 0)) }
+        .onChange(of: configuring) { _, value in resize((model.messages.isEmpty ? 216 : 480) + (value ? 132 : 0)) }
+        .onChange(of: model.messages.isEmpty) { _, empty in resize((empty ? 216 : 480) + (configuring ? 132 : 0)) }
     }
 }
 

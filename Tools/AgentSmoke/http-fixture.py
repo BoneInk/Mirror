@@ -5,7 +5,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def json(self, data):
         self.send_response(200); self.send_header('Content-Type','application/json'); self.end_headers()
         self.wfile.write(json.dumps({'code':0,'data':data}, ensure_ascii=False).encode())
+    def catalog(self, data):
+        self.send_response(200); self.send_header('Content-Type','application/json'); self.end_headers()
+        self.wfile.write(json.dumps(data).encode())
     def do_GET(self):
+        if self.path == '/catalog/api/agent/models':
+            assert self.headers['x-auth-token'] == 'fixture-only'
+            return self.catalog({'models':[{'id':'fixture::model','label':'Fixture','default':True}]})
+        if self.path == '/catalog/models':
+            assert self.headers['Authorization'] == 'Bearer fixture-only'
+            return self.catalog({'data':[{'id':'model-a'},{'id':'model-a'},{'id':'model-b'}]})
+
         if self.path.startswith('/wb'):
             assert self.headers['Authorization'] == 'Bearer fixture-only'
             if self.path.endswith('/localassistant'): return self.json({'online': 'offline' not in self.path})

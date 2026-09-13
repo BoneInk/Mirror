@@ -24,6 +24,11 @@ for line in sys.stdin:
     result = {}
     if method == 'initialize':
         assert params['clientInfo']['name'] == 'mirror'
+    elif method == 'model/list':
+        if params.get('cursor') == 'page-2':
+            result = {'data':[{'model':'fixture-b','displayName':'Second','supportedReasoningEfforts':[]}], 'nextCursor':None}
+        else:
+            result = {'data':[{'model':'fixture-a','displayName':'First','isDefault':True,'supportedReasoningEfforts':[{'reasoningEffort':'high'},{'reasoningEffort':'ultra'}]}, {'model':'hidden','hidden':True}], 'nextCursor':'page-2'}
     elif method == 'account/read':
         result = {'account': {'type': 'chatgpt'}, 'requiresOpenaiAuth': True}
     elif method in ('thread/start', 'thread/resume'):

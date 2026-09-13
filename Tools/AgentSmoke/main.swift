@@ -10,6 +10,17 @@ Task { @MainActor in
         let port = CommandLine.arguments[2]
         let defaults = UserDefaults(suiteName: "MirrorAgentSmoke-\(UUID())")!
         let store = AgentConfigurationStore(defaults: defaults)
+        var catalogProfile = AgentProfile.preset(.codex)
+        catalogProfile.executable = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("Tools/CodexReferenceSmoke/fake-codex.py").path
+        let codexModels = try await AgentModelCatalog.fetch(catalogProfile)
+        check(codexModels.map(\.id) == ["fixture-a", "fixture-b"], "Model pagination and hidden filtering")
+        check(codexModels[0].efforts == ["high", "ultra"] && codexModels[1].efforts == [], "Server effort values override presets, including empty list")
+        for kind in [AgentKind.smartwork, .hermes] {
+            var profile = AgentProfile.preset(kind); profile.endpoint = "http://127.0.0.1:\(port)/catalog"
+            let models = try await AgentModelCatalog.fetch(profile, credential: { _ in "fixture-only" })
+            check(models.count == (kind == .smartwork ? 1 : 2), "HTTP catalogs use protocol auth and deduplicate")
+            check(models[0].efforts == nil, "Do not invent HTTP effort capabilities")
+        }
         let user = CodexChatMessage(id: "u", isUser: true, text: "问题🪞")
         for kind in [AgentKind.claude, .codebuddy, .cursor, .kimi, .qoder, .opencode, .pi, .custom] {
             var profile = AgentProfile.preset(kind)
