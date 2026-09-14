@@ -425,9 +425,19 @@ final class CodexChatPanel: NSWindowController, NSWindowDelegate, NSPopoverDeleg
             popover = bubble
             let rect: NSRect
             if let screenRect = selection?.screenRect {
-                rect = view.convert(sourceWindow.convertFromScreen(screenRect), from: nil).intersection(view.visibleRect)
+                // WebKit's collapsed range at the end of a selection has zero width.
+                // Give it an area before clipping, otherwise intersection returns null.
+                let caretRect = NSRect(x: screenRect.minX, y: screenRect.minY,
+                    width: max(1, screenRect.width), height: max(1, screenRect.height))
+                let local = view.convert(sourceWindow.convertFromScreen(caretRect), from: nil)
+                let visible = view.visibleRect
+                let clipped = local.intersection(visible)
+                rect = clipped.isNull || clipped.isEmpty
+                    ? NSRect(x: min(max(local.minX, visible.minX), visible.maxX - 1),
+                             y: min(max(local.minY, visible.minY), visible.maxY - 1), width: 1, height: 1)
+                    : clipped
             } else { rect = NSRect(x: view.visibleRect.midX, y: view.visibleRect.midY, width: 1, height: 1) }
-            bubble.show(relativeTo: rect.isNull ? view.visibleRect : rect, of: view, preferredEdge: .maxX)
+            bubble.show(relativeTo: rect, of: view, preferredEdge: view.isFlipped ? .maxY : .minY)
             bubble.contentViewController?.view.window?.makeKey()
             sourceCloseObserver = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification,
                 object: sourceWindow, queue: .main) { [weak self] _ in

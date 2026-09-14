@@ -18,13 +18,19 @@ Task { @MainActor in
     source.makeKeyAndOrderFront(nil)
     NSApp.activate(ignoringOtherApps: true)
     var dismissals = 0
-    let selection = ReferenceSelection(text: "引用内容", screenRect: source.convertToScreen(NSRect(x: 120,y: 360,width: 100,height: 20)),
+    let selection = ReferenceSelection(text: "引用内容", screenRect: source.convertToScreen(NSRect(x: 120,y: 100,width: 0,height: 20)),
         anchorView: view, dismiss: { dismissals += 1 })
     let reference = DocumentReference(text: selection.text, title: "Test.md", fileURL: nil, selection: selection)
     let first = CodexChatPanel(reference: reference, directory: URL(fileURLWithPath: "/tmp"))
     first.showWindow(nil)
     try? await Task.sleep(for: .milliseconds(600))
     guard let firstWindow = first.presentedWindow, let editor = input(in: firstWindow.contentView) else { fatalError("Missing input") }
+    let anchor = selection.screenRect!
+    let verticalGap = max(anchor.minY - firstWindow.frame.maxY, firstWindow.frame.minY - anchor.maxY)
+    precondition(verticalGap < 24 && verticalGap > -24,
+                 "A zero-width selection endpoint must open the bubble next to the text, not the view center")
+    precondition(firstWindow.frame.minX <= anchor.midX && firstWindow.frame.maxX >= anchor.midX,
+                 "The bubble must remain horizontally aligned with the selection endpoint")
     precondition(firstWindow.isKeyWindow && firstWindow.firstResponder === editor, "Input must be focused after popover opens")
     precondition(editor.isEditable && editor.insertionPointColor == NSColor(EditorTheme.paper.accent))
     editor.insertText("中文 test", replacementRange: editor.selectedRange())
