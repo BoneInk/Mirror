@@ -4,7 +4,7 @@
 
 Mirror is a Markdown editor for macOS. Preview as you write, or select a passage and ask AI about it.
 
-[Download Mirror 1.1](https://github.com/BoneInk/Mirror/releases/tag/v1.1) · macOS 14+ · Intel / Apple Silicon
+[Download Mirror 1.1.1](https://github.com/BoneInk/Mirror/releases/tag/v1.1.1) · macOS 14+ · Intel / Apple Silicon
 
 ## What makes it different
 

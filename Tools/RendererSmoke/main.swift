@@ -2,6 +2,26 @@ import AppKit
 import Foundation
 import WebKit
 
+let underscoreCases: [(String, String)] = [
+    ("开启 foreign_keys；先解除归属、更新 retention_anchor，再删分类。",
+     "开启 foreign_keys；先解除归属、更新 retention_anchor，再删分类。"),
+    ("普通记录 retention_anchor 初始等于 copied_at；仅匹配 category_id IS NULL。",
+     "普通记录 retention_anchor 初始等于 copied_at；仅匹配 category_id IS NULL。"),
+    ("列表按 copied_at 和 id 稳定倒序分页。", "列表按 copied_at 和 id 稳定倒序分页。"),
+    ("foo__bar__baz 中文_字段_名称 v1_2_3", "foo__bar__baz 中文_字段_名称 v1_2_3"),
+    ("_italic_ and __bold__", "<em>italic</em> and <strong>bold</strong>"),
+    ("（_强调_），（__加粗__）。", "（<em>强调</em>），（<strong>加粗</strong>）。"),
+    ("_ leading_ and _trailing _", "_ leading_ and _trailing _"),
+    (#"\_literal\_ and `foreign_keys`"#, "_literal_ and <code>foreign_keys</code>"),
+    ("*italic* and **bold**", "<em>italic</em> and <strong>bold</strong>")
+]
+for (source, expected) in underscoreCases {
+    guard MarkdownRenderer.render(source) == "<p data-source-line=\"0\">\(expected)</p>" else {
+        fputs("Underscore rendering regression: \(source)\n", stderr)
+        exit(2)
+    }
+}
+
 let markdown = #"""
 ---
 title: Smoke test

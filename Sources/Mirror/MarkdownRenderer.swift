@@ -782,9 +782,10 @@ enum MarkdownRenderer {
         result = replaceFootnoteReferences(in: result, footnotes: footnotes)
         let replacements: [(String, String)] = [
             (#"\*\*([^*]+)\*\*"#, #"<strong>$1</strong>"#),
-            (#"__([^_]+)__"#, #"<strong>$1</strong>"#),
+            // Underscores inside identifiers are literal, not emphasis delimiters.
+            (#"(?<![\p{L}\p{N}\p{M}_])__(?!\s)([^_]+?)(?<!\s)__(?![\p{L}\p{N}\p{M}_])"#, #"<strong>$1</strong>"#),
             (#"(?<!\*)\*([^*]+)\*(?!\*)"#, #"<em>$1</em>"#),
-            (#"(?<!_)_([^_]+)_(?!_)"#, #"<em>$1</em>"#),
+            (#"(?<![\p{L}\p{N}\p{M}_])_(?!\s)([^_]+?)(?<!\s)_(?![\p{L}\p{N}\p{M}_])"#, #"<em>$1</em>"#),
             (#"~~([^~]+)~~"#, #"<del>$1</del>"#)
         ]
         for (pattern, template) in replacements {
