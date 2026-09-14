@@ -31,6 +31,23 @@ Task { @MainActor in
                  "A zero-width selection endpoint must open the bubble next to the text, not the view center")
     precondition(firstWindow.frame.minX <= anchor.midX && firstWindow.frame.maxX >= anchor.midX,
                  "The bubble must remain horizontally aligned with the selection endpoint")
+    if CommandLine.arguments.contains("--geometry-only") {
+    let markerRect = source.convertToScreen(NSRect(x: 40, y: 310, width: 24, height: 22))
+    let markerSelection = ReferenceSelection(text: "Saved quote", screenRect: markerRect, anchorView: view, memoryID: UUID())
+    let markerReference = DocumentReference(text: markerSelection.text, title: "Test.md", fileURL: nil, selection: markerSelection)
+    let recalled = CodexChatPanel(reference: markerReference, directory: URL(fileURLWithPath: "/tmp"))
+    recalled.model.messages = [CodexChatMessage(id: "answer", isUser: false, text: "Saved answer")]
+    recalled.showWindow(nil)
+    try? await Task.sleep(for: .milliseconds(600))
+    let recalledFrame = recalled.presentedWindow!.frame
+    precondition(abs(recalledFrame.minX - markerRect.maxX) < 24, "Recalled bubble must attach beside the memory marker")
+    precondition(recalledFrame.minY <= markerRect.midY && recalledFrame.maxY >= markerRect.midY,
+                 "Tall recalled bubble must stay vertically aligned with the marker")
+    recalled.close()
+        source.close()
+        print("PASS: zero-width selection and tall memory bubble anchor geometry (focus checks skipped)")
+        exit(0)
+    }
     precondition(firstWindow.isKeyWindow && firstWindow.firstResponder === editor, "Input must be focused after popover opens")
     precondition(editor.isEditable && editor.insertionPointColor == NSColor(EditorTheme.paper.accent))
     editor.insertText("中文 test", replacementRange: editor.selectedRange())

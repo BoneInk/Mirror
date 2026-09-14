@@ -33,14 +33,18 @@ for line in sys.stdin:
         result = {'account': {'type': 'chatgpt'}, 'requiresOpenaiAuth': True}
     elif method in ('thread/start', 'thread/resume'):
         if method == 'thread/start':
+            assert params['ephemeral'] is True
             assert params['sandbox'] == 'read-only' and params['approvalPolicy'] == 'never'
         if method == 'thread/resume':
-            thread = params['threadId']
+            raise AssertionError('Mirror must never resume persistent threads')
             turn = max(turn, 1)
         result = {'thread': {'id': thread}}
     elif method == 'turn/start':
         assert params['threadId'] == thread
         text = params['input'][0]['text']
+        if 'Follow up' in text:
+            assert 'Explain this' in text and '已收到引用' in text
+            turn = max(turn, 1)
         if 'Explain this' in text:
             assert params['effort'] == 'high'
         if 'FAIL_TEST' in text:

@@ -135,7 +135,14 @@ MainActor.assumeIsolated {
         const exact={id:'exact',preview:'question',renderedAnchor:{quote:'Second item',prefix:'First item',suffix:'',offset:10}};
         const fallback={id:'fallback',preview:'question',sourceLine:0,renderedAnchor:{quote:'missing source **markup**'}};
         const highlighted=()=>window.CSS?.highlights?.has('mirror-reference') || !!window.getSelection().toString();
-        window.mirrorSetMemories([exact,fallback]);window.mirrorRevealMemory('exact');
+        window.mirrorSetMemories([exact,fallback]);
+        let scrollCalls=0;const originalScroll=Element.prototype.scrollIntoView;
+        Element.prototype.scrollIntoView=function(){scrollCalls++;};
+        window.mirrorRevealMemory('exact',false);
+        window.mirrorRevealMemory('fallback',false);
+        Element.prototype.scrollIntoView=originalScroll;
+        if(scrollCalls!==0) return false;
+        window.mirrorRevealMemory('exact');
         if(!highlighted()) return false;
         window.mirrorRevealMemory('fallback');if(highlighted()) return false;
         window.mirrorRevealMemory('exact');window.mirrorSetMemories([fallback]);if(highlighted()) return false;
@@ -182,9 +189,9 @@ MainActor.assumeIsolated {
             model.saveMemory()
             precondition(memory.records.count == 1, "Submitted reference must create one memory")
             let saved = CodexMemoryStore(url: memoryURL, defaults: defaults).records.first!
-            precondition(saved.threadID == model.threadID && saved.messages.count == 2)
+            precondition(saved.threadID == nil && saved.messages.count == 2)
             let restored = CodexChatModel(reference: reference, directory: URL(fileURLWithPath: "/tmp"), memory: memory, restored: saved)
-            precondition(restored.threadID == model.threadID && restored.reference == nil && restored.messages.count == 2)
+            precondition(restored.threadID == nil && restored.reference == nil && restored.messages.count == 2)
             restored.shutdown()
             memory.enabled = false
             precondition(memory.records(for: reference.fileURL).isEmpty)
@@ -198,7 +205,7 @@ MainActor.assumeIsolated {
             model.draft = "Follow up"
             model.send()
             while model.isRunning { try await Task.sleep(for: .milliseconds(10)) }
-            precondition(model.threadID == firstThread && model.messages.count == 4)
+            precondition(model.threadID != nil && model.threadID != firstThread && model.messages.count == 4)
             precondition(model.messages.last?.text == "继续回答：上下文仍在")
             model.draft = "HOLD_TEST"
             model.send()

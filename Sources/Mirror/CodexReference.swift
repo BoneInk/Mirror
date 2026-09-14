@@ -120,8 +120,8 @@ enum CodexReference {
               marker.addEventListener('click',event=> {
                 if(!event.isTrusted) return;
                 // A grouped marker only opens a chooser; do not highlight until a record is chosen.
-                if(group.ids.length===1) window.mirrorRevealMemory(memory.id);
-                const rect=range.getBoundingClientRect();
+                if(group.ids.length===1) window.mirrorRevealMemory(memory.id, false);
+                const rect=marker.getBoundingClientRect();
                 window.webkit.messageHandlers.mirrorReference.postMessage({action:group.ids.length>1?'memoryMenu':'memory',id:memory.id,ids:group.ids,x:rect.x,y:rect.y,width:rect.width,height:rect.height});
               });
               marker.addEventListener('contextmenu',event=> {
@@ -132,15 +132,15 @@ enum CodexReference {
               markers.appendChild(marker);
             }
           }
-          window.mirrorRevealMemory = id => {
+          window.mirrorRevealMemory = (id, scroll = true) => {
             const memory=memories.find(m=>m.id===id);
             if(!memory) return;
             let range=resolveAnchor(memory.renderedAnchor);
-            if(range) {references.set(id,{range,text:range.toString()});window.mirrorRevealReference(id);}
+            if(range) {references.set(id,{range,text:range.toString()});window.mirrorRevealReference(id, scroll);}
             else {
               // A source line locates a block, not the exact quoted text. Never paint the whole list.
               window.mirrorClearReference();
-              if(memory.sourceLine!=null) sourceBlock(memory.sourceLine)?.scrollIntoView({block:'center'});
+              if(scroll && memory.sourceLine!=null) sourceBlock(memory.sourceLine)?.scrollIntoView({block:'center'});
             }
           };
           window.mirrorSetMemories = values => {
@@ -151,13 +151,13 @@ enum CodexReference {
           new ResizeObserver(renderMemories).observe(document.querySelector('article') || document.body);
           window.addEventListener('resize',renderMemories);
 
-          window.mirrorRevealReference = id => {
+          window.mirrorRevealReference = (id, scroll = true) => {
             const saved = references.get(id), range = saved?.range;
             window.mirrorClearReference();
             if (!range || !range.startContainer.isConnected || range.toString() !== saved.text) return;
             activeReferenceID = id;
             const element = range.startContainer.parentElement;
-            element?.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth',block:'center'});
+            if (scroll) element?.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth',block:'center'});
             if (window.CSS?.highlights) CSS.highlights.set('mirror-reference',new Highlight(range));
             else { const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range); }
           };

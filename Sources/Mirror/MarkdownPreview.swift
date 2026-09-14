@@ -186,7 +186,7 @@ struct MarkdownPreview: NSViewRepresentable {
                   let record = CodexMemoryStore.shared.records(for: parent?.fileURL).first(where: { $0.id.uuidString == id }) else { return }
             let current = referenceSelection(body)
             let encoded = String(data: try! JSONEncoder().encode(id), encoding: .utf8)!
-            webView?.evaluateJavaScript("window.mirrorRevealMemory?.(\(encoded))", in: nil, in: .defaultClient) { _ in }
+            webView?.evaluateJavaScript("window.mirrorRevealMemory?.(\(encoded), false)", in: nil, in: .defaultClient) { _ in }
             parent?.onReferenceToCodex(ReferenceSelection(text: record.quote, location: record.location,
                 screenRect: current.screenRect, reveal: current.reveal, anchorView: webView,
                 sourceAnchor: record.sourceAnchor, renderedAnchor: record.renderedAnchor, memoryID: record.id, dismiss: current.dismiss))
