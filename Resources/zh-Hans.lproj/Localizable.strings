@@ -60,12 +60,14 @@
 "Refresh" = "刷新";
 "Rename…" = "重命名…";
 "Move to Trash" = "移到废纸篓";
+"Copy Absolute Path" = "复制绝对路径";
 "Show in Finder" = "在访达中显示";
 "Open in Default App" = "使用默认应用打开";
 "Remove from Recent" = "从最近文件中移除";
 "Clear" = "清除";
 "Clear…" = "清除…";
 "Close" = "关闭";
+"Close All Other Documents" = "关闭其他所有文档";
 "Close Tab" = "关闭标签页";
 "Save" = "保存";
 "Save As…" = "另存为…";

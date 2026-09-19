@@ -817,6 +817,13 @@ private final class MirrorTextView: NSTextView {
         item.representedObject = selected
         menu.insertItem(.separator(), at: 0)
         menu.insertItem(item, at: 0)
+        if !selected.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let reference = NSMenuItem(title: "引用到 Codex 会话…", action: #selector(referenceToCodex(_:)), keyEquivalent: "")
+            reference.target = self
+            reference.representedObject = selected
+            reference.tag = 1
+            menu.insertItem(reference, at: 0)
+        }
         return menu
     }
 
@@ -836,7 +843,7 @@ private final class MirrorTextView: NSTextView {
             self.showFindIndicator(for: range)
         }, anchorView: self, sourceAnchor: CodexTextAnchor.capture(in: snapshot, range: range),
             memoryID: CodexMemoryStore.shared.records(for: memoryFileURL).first(where: { $0.sourceAnchor?.resolve(in: snapshot) == range })?.id,
-            dismiss: { [weak self] in self?.clearReferenceSelection(expected: range) }))
+            dismiss: { [weak self] in self?.clearReferenceSelection(expected: range) }, chooseCodexThread: sender.tag == 1))
     }
 
 

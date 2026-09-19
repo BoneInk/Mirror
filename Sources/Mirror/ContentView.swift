@@ -416,6 +416,15 @@ private struct DocumentTabItem: View {
         .animation(reduceMotion ? nil : MirrorMotion.fast, value: isActive)
         .contextMenu {
             Button("Close") { document.closeTab(tab.id) }
+            Button("Close All Other Documents") { document.closeOtherTabs(keeping: tab.id) }
+                .disabled(document.openTabs.count <= 1)
+            Divider()
+            Button("Copy Absolute Path") {
+                if let path = tab.filePath ?? tab.previewPath {
+                    document.copyAbsolutePath(URL(fileURLWithPath: path))
+                }
+            }
+            .disabled(tab.filePath == nil && tab.previewPath == nil)
             if let path = tab.filePath ?? tab.previewPath {
                 Button("Show in Finder") { document.revealInFinder(URL(fileURLWithPath: path)) }
             }
@@ -963,10 +972,43 @@ private struct MarkdownFormattingMenu: View {
     }
 }
 
+private struct VisibleWorkspaceNode: Identifiable {
+    let node: WorkspaceNode
+    let depth: Int
+    var id: String { node.id }
+}
+
 private struct SidebarView: View {
     @EnvironmentObject private var document: DocumentStore
     @State private var workspaceSelection = Set<String>()
     @State private var workspaceQuery = ""
+    @State private var expandedWorkspaceFolders = Set<String>()
+
+    private var visibleWorkspaceNodes: [VisibleWorkspaceNode] {
+        func flatten(_ nodes: [WorkspaceNode], depth: Int) -> [VisibleWorkspaceNode] {
+            nodes.flatMap { node in
+                [VisibleWorkspaceNode(node: node, depth: depth)] +
+                    (expandedWorkspaceFolders.contains(node.id) || !workspaceQuery.isEmpty
+                     ? flatten(node.children ?? [], depth: depth + 1) : [])
+            }
+        }
+        return flatten(filteredWorkspaceTree, depth: 0)
+    }
+
+    private func revealCurrentDocument() {
+        guard let url = document.displayURL?.standardizedFileURL,
+              let root = document.workspaceURL?.standardizedFileURL,
+              url.path.hasPrefix(root.path == "/" ? "/" : root.path + "/") else {
+            workspaceSelection.removeAll()
+            return
+        }
+        workspaceSelection = [url.path]
+        var parent = url.deletingLastPathComponent()
+        while parent != root && parent.path != "/" {
+            expandedWorkspaceFolders.insert(parent.path)
+            parent.deleteLastPathComponent()
+        }
+    }
 
     private var filteredWorkspaceTree: [WorkspaceNode] {
         let query = workspaceQuery.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1067,6 +1109,7 @@ private struct SidebarView: View {
                 .background(ContentSurface(theme: document.theme, radius: 7))
                 .padding(.horizontal, 12).padding(.bottom, 8)
 
+                ScrollViewReader { proxy in
                 List(selection: $workspaceSelection) {
                     Group {
                         if filteredWorkspaceTree.isEmpty {
@@ -1076,7 +1119,19 @@ private struct SidebarView: View {
                                 detail: workspaceQuery.isEmpty ? "Create a document to get started." : "Try a different file name."
                             )
                         } else {
-                            OutlineGroup(filteredWorkspaceTree, children: \.children) { node in
+                            ForEach(visibleWorkspaceNodes) { item in
+                                let node = item.node
+                                HStack(spacing: 0) {
+                                    if node.isDirectory {
+                                        Button {
+                                            if !expandedWorkspaceFolders.insert(node.id).inserted {
+                                                expandedWorkspaceFolders.remove(node.id)
+                                            }
+                                        } label: {
+                                            Image(systemName: expandedWorkspaceFolders.contains(node.id) || !workspaceQuery.isEmpty ? "chevron.down" : "chevron.right")
+                                                .font(.system(size: 9)).frame(width: 16)
+                                        }.buttonStyle(.plain).accessibilityLabel("Expand or collapse " + node.url.lastPathComponent)
+                                    } else { Color.clear.frame(width: 16, height: 1) }
                                 WorkspaceNodeRow(
                                     node: node,
                                     root: root,
@@ -1084,7 +1139,10 @@ private struct SidebarView: View {
                                     draggedURLs: workspaceSelection.contains(node.id) ? selectedWorkspaceURLs : [node.url],
                                     onDrop: { providers in acceptDrop(providers, into: node.url) }
                                 )
+                                }
+                                .padding(.leading, CGFloat(item.depth) * 14)
                                 .tag(node.id)
+                                .id(node.id)
                                 .listRowBackground(Color.clear)
                             }
                         }
@@ -1098,6 +1156,13 @@ private struct SidebarView: View {
                 .onDrop(of: WorkspaceTransfer.dropTypes, isTargeted: nil) { providers in
                     acceptDrop(providers, into: root)
                 }
+                .task(id: "\(document.displayURL?.path ?? "")-\(document.isLoadingWorkspace)") {
+                    guard !document.isLoadingWorkspace else { return }
+                    revealCurrentDocument()
+                    await Task.yield()
+                    guard !Task.isCancelled, let path = document.displayURL?.standardizedFileURL.path else { return }
+                    proxy.scrollTo(path, anchor: .center)
+                }
                 .onCopyCommand { selectedWorkspaceURLs.map { WorkspaceTransfer.provider(for: $0, cut: false) } }
                 .onCutCommand { selectedWorkspaceURLs.map { WorkspaceTransfer.provider(for: $0, cut: true) } }
                 .onPasteCommand(of: WorkspaceTransfer.pasteTypes) { providers in
@@ -1107,6 +1172,7 @@ private struct SidebarView: View {
                         document.pasteWorkspaceItems(urls, into: destination, move: move)
                         workspaceSelection.removeAll()
                     }
+                }
                 }
             } else {
                 SidebarEmptyState(
@@ -1154,6 +1220,15 @@ private struct SidebarView: View {
             .overlay(alignment: .top) { Divider().opacity(0.45) }
         }
         .navigationGlass(radius: 0)
+        .onChange(of: document.displayURL, initial: true) { _, _ in
+            workspaceQuery = ""
+            document.followWorkspaceToCurrentDocument()
+            revealCurrentDocument()
+        }
+        .onChange(of: document.workspaceURL) { _, _ in
+            expandedWorkspaceFolders.removeAll()
+            revealCurrentDocument()
+        }
     }
 
     private func acceptDrop(_ providers: [NSItemProvider], into directory: URL) -> Bool {
@@ -1416,6 +1491,7 @@ private struct WorkspaceNodeRow: View {
                 Button("New Folder") { document.createFolder(in: node.url) }
                 Divider()
                 Button("Rename…") { document.renameWorkspaceItem(node.url) }
+                Button("Copy Absolute Path") { document.copyAbsolutePath(node.url) }
                 Button("Show in Finder") { document.revealInFinder(node.url) }
                 Divider()
                 Button("Move to Trash", role: .destructive) { document.moveWorkspaceItemToTrash(node.url) }
@@ -1479,6 +1555,7 @@ private struct WorkspaceFileRow: View {
             if !document.isSupportedDocument(url) {
                 Button("Open in Default App") { document.openInDefaultApp(url) }
             }
+            Button("Copy Absolute Path") { document.copyAbsolutePath(url) }
             Button("Show in Finder") { document.revealInFinder(url) }
             Divider()
             Button("Rename…") { document.renameWorkspaceItem(url) }

@@ -432,7 +432,7 @@ final class DocumentStore: ObservableObject {
     func closeTab(_ id: UUID) {
         guard let index = openTabs.firstIndex(where: { $0.id == id }) else { return }
         if activeTabID != id { selectTab(id) }
-        guard confirmDiscardIfNeeded() else { return }
+        guard activeTabID == id, confirmDiscardIfNeeded() else { return }
         autosaveTask?.cancel()
         openTabs.removeAll { $0.id == id }
         if openTabs.isEmpty {
@@ -447,6 +447,17 @@ final class DocumentStore: ObservableObject {
             loadTab(openTabs[min(index, openTabs.count - 1)])
         }
         scheduleRecoverySnapshot()
+    }
+
+    func closeOtherTabs(keeping id: UUID) {
+        guard openTabs.contains(where: { $0.id == id }) else { return }
+        let otherIDs = openTabs.map(\.id).filter { $0 != id }
+        for otherID in otherIDs {
+            closeTab(otherID)
+            // Cancelled saving/discarding or a blocked tab switch stops the batch.
+            guard !openTabs.contains(where: { $0.id == otherID }) else { return }
+        }
+        selectTab(id)
     }
 
     func selectNextTab(offset: Int) {
@@ -502,6 +513,18 @@ final class DocumentStore: ObservableObject {
         workspaceURL = normalized
         UserDefaults.standard.set(workspaceURL?.path, forKey: "MirrorWorkspaceFolder")
         refreshWorkspace()
+    }
+
+    /// Keep an enclosing workspace; otherwise browse the active document's folder.
+    func followWorkspaceToCurrentDocument() {
+        guard let url = displayURL?.standardizedFileURL else { return }
+        if let root = workspaceURL?.standardizedFileURL,
+           url.path.hasPrefix(root.path == "/" ? "/" : root.path + "/") { return }
+        let parent = url.deletingLastPathComponent()
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: parent.path, isDirectory: &isDirectory),
+              isDirectory.boolValue else { return }
+        openWorkspaceFolder(parent)
     }
 
     func refreshWorkspace() {
@@ -1276,6 +1299,17 @@ final class DocumentStore: ObservableObject {
         guard isMarkdownDocument else { return }
         readerMode.toggle()
         if readerMode { focusMode = false }
+    }
+
+    func copyAbsolutePath(_ url: URL) {
+        guard url.isFileURL else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        if pasteboard.setString(url.standardizedFileURL.path(percentEncoded: false), forType: .string) {
+            flash("路径已复制")
+        } else {
+            flash("无法复制路径，请重试")
+        }
     }
 
     func revealInFinder(_ url: URL) {

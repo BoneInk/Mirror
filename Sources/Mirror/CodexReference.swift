@@ -10,6 +10,7 @@ struct ReferenceSelection {
     var renderedAnchor: CodexTextAnchor? = nil
     var memoryID: UUID? = nil
     var dismiss: (@MainActor () -> Void)? = nil
+    var chooseCodexThread = false
 }
 
 struct DocumentReference {
@@ -233,8 +234,12 @@ enum CodexReference {
     static func send(selection: ReferenceSelection, title: String, fileURL: URL?, theme: EditorTheme = .paper) {
         let reference = selection.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? nil : DocumentReference(text: selection.text, title: title, fileURL: fileURL, selection: selection)
-        CodexChatPanel.open(reference: reference, theme: theme,
-                            directory: fileURL?.deletingLastPathComponent() ?? FileManager.default.homeDirectoryForCurrentUser)
+        if selection.chooseCodexThread, let reference {
+            CodexThreadPickerPanel.open(reference: reference)
+        } else {
+            CodexChatPanel.open(reference: reference, theme: theme,
+                                directory: fileURL?.deletingLastPathComponent() ?? FileManager.default.homeDirectoryForCurrentUser)
+        }
     }
 
     static func send(text: String, title: String, fileURL: URL?, theme: EditorTheme = .paper) {

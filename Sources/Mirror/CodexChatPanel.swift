@@ -670,6 +670,12 @@ private struct CodexChatView: View {
                                 .font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
                         }.contentShape(Rectangle())
                     }.buttonStyle(.plain).help("回到原文并高亮引用")
+                    Button {
+                        CodexThreadPickerPanel.open(reference: source)
+                        close()
+                    } label: { Image(systemName: "text.bubble") }
+                        .buttonStyle(.borderless)
+                        .help("引用到 Codex 会话…").accessibilityLabel("引用到 Codex 会话…")
                     if model.reference != nil {
                         Button { model.reference = nil } label: { Image(systemName: "xmark").font(.system(size: 10)) }
                             .buttonStyle(.borderless).foregroundStyle(.secondary)

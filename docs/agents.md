@@ -49,3 +49,8 @@ WorkBuddy 使用共享的本地助理消息通道，返回本次消息后的首�
 - 暂未确认深度协议的接入不会发送推测参数。Pi 参数依据[官方 CLI 文档](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent#model-options)。
 
 打开气泡中的配置区会自动查询可用模型，也可点击刷新：Codex 使用独立的 `model/list` 连接，读取模型对应的思考深度；Smartwork 使用 `/api/agent/models`；兼容 HTTP 服务使用 `/models`。查询仅获取元数据，HTTP 查询使用已配置的认证信息，不发送提问。Smartwork 当前列表未返回思考深度，仍由客户端管理；其他未接入查询协议的 CLI 保留手动模型配置。查询失败不会覆盖已保存的选择。
+
+
+## 引用到已有 Codex 会话
+
+选中文字后，右键选择「引用到 Codex 会话…」，或点击提问气泡引用区的会话按钮。Mirror 会展示本机 Codex 的会话列表，让你选择目标并预填引用草稿。该入口独立于气泡的默认智能体。运行时机制、草稿替换行为、支持范围与验证方法见[会话引用说明](codex-thread-reference.md)。

@@ -133,6 +133,14 @@ struct MarkdownPreview: NSViewRepresentable {
                 item.target = self
                 item.representedObject = selection
                 menu.addItem(item)
+                if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    let reference = NSMenuItem(title: "引用到 Codex 会话…", action: #selector(openCodexChat(_:)), keyEquivalent: "")
+                    reference.target = self
+                    var targetSelection = selection
+                    targetSelection.chooseCodexThread = true
+                    reference.representedObject = targetSelection
+                    menu.addItem(reference)
+                }
                 if !text.isEmpty {
                     let copy = NSMenuItem(title: CodexReference.localized("Copy"), action: #selector(copyReference(_:)), keyEquivalent: "")
                     copy.target = self

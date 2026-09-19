@@ -55,6 +55,14 @@ Task { @MainActor in
         fail("Opening files did not create independent tabs.")
     }
 
+    store.followWorkspaceToCurrentDocument()
+    guard store.workspaceURL == root.standardizedFileURL else { fail("Following a document replaced its enclosing workspace.") }
+    store.closeWorkspaceFolder()
+    store.followWorkspaceToCurrentDocument()
+    guard store.workspaceURL == sourceURL.deletingLastPathComponent().standardizedFileURL else {
+        fail("Following a document did not open its folder from an empty workspace.")
+    }
+
     store.openFile(unknownTextURL)
     guard store.fileURL == unknownTextURL.standardizedFileURL,
           store.previewFileURL == nil,
@@ -67,9 +75,20 @@ Task { @MainActor in
     }
 
     guard let markdownTab = store.openTabs.first(where: { $0.filePath == markdownURL.path }),
-          let sourceTab = store.openTabs.first(where: { $0.filePath == sourceURL.path }) else {
+          var sourceTab = store.openTabs.first(where: { $0.filePath == sourceURL.path }) else {
         fail("Expected file tabs are missing.")
     }
+    // Keeping an inactive tab closes text, untitled and image-preview tabs alike.
+    let countBeforeInvalidClose = store.openTabs.count
+    store.closeOtherTabs(keeping: UUID())
+    guard store.openTabs.count == countBeforeInvalidClose else { fail("Invalid keep ID closed documents.") }
+    store.closeOtherTabs(keeping: markdownTab.id)
+    guard store.openTabs.count == 1, store.activeTabID == markdownTab.id,
+          store.fileURL == markdownURL.standardizedFileURL else { fail("Close others did not retain the target document.") }
+    store.closeOtherTabs(keeping: markdownTab.id)
+    guard store.openTabs.count == 1 else { fail("Close others changed a single-tab workspace.") }
+    store.openFile(sourceURL)
+    sourceTab = store.openTabs.first(where: { $0.filePath == sourceURL.path })!
     store.selectTab(markdownTab.id)
     guard store.lineEnding == .crlf else { fail("CRLF line endings were not detected.") }
     guard store.insertImageFiles([imageURL]),
