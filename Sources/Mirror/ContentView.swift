@@ -1185,6 +1185,7 @@ private struct SidebarView: View {
                                 .tag(node.id)
                                 .id(node.id)
                                 .listRowBackground(Color.clear)
+                                .background(WorkspaceSelectionAppearance())
                             }
                         }
                     }
@@ -1334,6 +1335,37 @@ private struct SidebarEmptyState: View {
     }
 }
 
+/// Keep native keyboard/multiple selection, but let workspace rows draw the highlight.
+private struct WorkspaceSelectionAppearance: NSViewRepresentable {
+    func makeNSView(context: Context) -> SelectionView { SelectionView() }
+    func updateNSView(_ view: SelectionView, context: Context) { view.configureTable() }
+
+    final class SelectionView: NSView {
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            configureTable()
+        }
+        override func viewDidMoveToSuperview() {
+            super.viewDidMoveToSuperview()
+            configureTable()
+        }
+        func configureTable() {
+            // SwiftUI can attach the hosting row after updating its background.
+            DispatchQueue.main.async { [weak self] in
+                var ancestor = self?.superview
+                while let view = ancestor {
+                    if let table = view as? NSTableView {
+                        table.selectionHighlightStyle = .none
+                        return
+                    }
+                    ancestor = view.superview
+                }
+            }
+        }
+    }
+}
+
 private struct QuietRowSurface: ViewModifier {
     @EnvironmentObject private var document: DocumentStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -1343,8 +1375,7 @@ private struct QuietRowSurface: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background {
-                if isSelected { ContentSurface(theme: document.theme, radius: 6) }
-                else { RoundedRectangle(cornerRadius: 6).fill(surfaceColor) }
+                RoundedRectangle(cornerRadius: 6).fill(surfaceColor)
             }
             .onHover { hovering in
                 if reduceMotion {
