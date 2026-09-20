@@ -192,7 +192,7 @@ struct CodexThreadPickerView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("选择接收引用的 Codex 会话").font(.headline)
-            Text("显示本机未归档会话。引用将填入目标会话草稿，在 Codex 中确认发送。")
+            Text("选择原会话，在 Mirror 中继续对话，或在 Codex 桌面打开引用草稿。")
                 .font(.caption).foregroundStyle(.secondary)
             GroupBox("引用内容") {
                 ScrollView { Text(model.reference.markdown).font(.system(size: 12)).textSelection(.enabled)
@@ -231,14 +231,20 @@ struct CodexThreadPickerView: View {
             }
             if let error = model.error { Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
             if let feedback = model.feedback { Label(feedback, systemImage: "checkmark.circle").font(.caption).foregroundStyle(.green) }
-            Text("将替换目标会话未发送的草稿；如有原草稿，请先在 Codex 中保存。")
+            Text("在 Mirror 续聊前需退出 Codex。选择在 Codex 打开会替换其未发送的草稿。")
                 .font(.caption).foregroundStyle(.secondary)
             HStack {
                 Text(model.selected.map { "目标：\($0.title)" } ?? "请选择一个目标会话").font(.caption).lineLimit(1)
                 Spacer()
                 Button("关闭", action: close).keyboardShortcut(.cancelAction)
-                Button(model.handingOff ? "正在打开…" : "引用到此会话") { Task { await model.referenceSelection() } }
-                    .buttonStyle(.borderedProminent).disabled(!model.canReference)
+                Button(model.handingOff ? "正在打开…" : "在 Codex 打开") { Task { await model.referenceSelection() } }
+                    .disabled(!model.canReference)
+                Button("在 Mirror 续聊") {
+                    if let thread = model.selected {
+                        CodexExistingThreadPanel.open(thread: thread, reference: model.reference)
+                        close()
+                    }
+                }.buttonStyle(.borderedProminent).disabled(!model.canReference)
             }
         }.padding(20).frame(minWidth: 500, minHeight: 460)
             .task { await model.load() }

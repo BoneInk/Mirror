@@ -263,3 +263,32 @@
 
 "Open Agent Chat" = "打开智能体对话";
 "Ask About Selection" = "引用提问";
+
+/* Workspace filters and navigation */
+"Show Markdown Only" = "仅显示 Markdown 文件";
+"MD only" = "仅 MD";
+"On" = "开启";
+"Show All Files" = "显示所有文件";
+"Show only Markdown files in the workspace" = "仅显示工作区中的 Markdown 文件";
+"Search in Folder" = "在文件夹中搜索";
+"Workspace actions" = "工作区操作";
+"New document" = "新建文档";
+"New tab" = "新建标签页";
+"No folder open" = "尚未打开文件夹";
+"Open Folder" = "打开文件夹";
+"Open a folder to browse and manage its files." = "打开文件夹以浏览和管理其中的文件。";
+"This folder is empty" = "此文件夹为空";
+"No matching files" = "没有匹配的文件";
+"Create a document to get started." = "新建文档以开始使用。";
+"Try a different file name." = "请尝试其他文件名。";
+"Open in Mirror" = "在 Mirror 中打开";
+"Preview in Mirror" = "在 Mirror 中预览";
+"Command palette (⇧⌘P)" = "命令面板（⇧⌘P）";
+"Quick open (⌘P)" = "快速打开（⌘P）";
+"Formatting" = "格式设置";
+"Line endings" = "换行符";
+"Text encoding" = "文本编码";
+"Match case" = "区分大小写";
+"Use regular expression" = "使用正则表达式";
+"Search text in every file" = "搜索文件中的文本";
+"Type a file name or path" = "输入文件名或路径";

@@ -23,6 +23,9 @@ try imageData.write(to: imageURL)
 
 Task { @MainActor in
     let store = DocumentStore()
+    // Editing fixtures must not inherit the presentation preference from a prior run.
+    store.readerMode = false
+    store.showPreview = true
     store.openWorkspaceFolder(root)
     for _ in 0..<40 where store.workspaceFiles.count < 4 {
         try? await Task.sleep(for: .milliseconds(50))
@@ -179,9 +182,22 @@ Task { @MainActor in
     store.typography.editorFontSize = 18.5
     store.editorSettings.autoPairDelimiters = false
     guard !store.availableFontFamilies.isEmpty else { fail("System font families were not discovered.") }
+    store.readerMode = true
+    store.openFile(markdownURL)
+    guard store.readerMode else { fail("Reading mode was reset by opening Markdown.") }
+    store.openFile(sourceURL)
+    guard !store.readerMode else { fail("Source files must retain their editor.") }
+    store.openFile(markdownURL)
+    guard store.readerMode else { fail("Reading preference was lost after visiting a source file.") }
+    store.readerMode = false
+    store.showPreview = false
+    store.newDocument()
+    guard !store.readerMode && !store.showPreview else { fail("Edit mode was reset for a new tab.") }
+    store.readerMode = true
     store.persistForApplicationTermination()
 
     let restored = DocumentStore()
+    guard restored.readerMode && !restored.showPreview else { fail("Global presentation preferences did not survive restart.") }
     guard restored.openTabs.count == store.openTabs.count,
           restored.openTabs.contains(where: { $0.isDirty && $0.text.contains("Unsaved session text") }),
           restored.theme.name == "Smoke Theme",

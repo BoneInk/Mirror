@@ -32,9 +32,17 @@ final class DocumentStore: ObservableObject {
     @Published var showSidebar = true
     @Published var showFileLibrary = false
     @Published var showOutline = true
-    @Published var showPreview = true
+    @Published var showPreview = UserDefaults.standard.object(forKey: "MirrorShowPreview") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(showPreview, forKey: "MirrorShowPreview") }
+    }
     @Published var focusMode = false
-    @Published var readerMode = false
+    @Published private var prefersReaderMode = UserDefaults.standard.bool(forKey: "MirrorReaderMode") {
+        didSet { UserDefaults.standard.set(prefersReaderMode, forKey: "MirrorReaderMode") }
+    }
+    var readerMode: Bool {
+        get { prefersReaderMode && isMarkdownDocument && previewFileURL == nil }
+        set { prefersReaderMode = newValue }
+    }
     @Published var theme: EditorTheme = .paper {
         didSet { persistAppearanceIfReady() }
     }
@@ -413,7 +421,7 @@ final class DocumentStore: ObservableObject {
         text = tab.text
         selectedRange = NSRange(location: min(tab.selectionLocation, (tab.text as NSString).length),
                                 length: min(tab.selectionLength, max(0, (tab.text as NSString).length - min(tab.selectionLocation, (tab.text as NSString).length))))
-        readerMode = tab.readerMode && documentFormat.isMarkdown && previewFileURL == nil
+        // Presentation is an app preference, not part of the selected tab's state.
         headings = documentFormat.isMarkdown ? Self.extractHeadings(from: text) : []
         stats = WritingStats(text: text)
         isDirty = tab.isDirty

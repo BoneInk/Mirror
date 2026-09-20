@@ -82,6 +82,8 @@ struct MarkdownPreview: NSViewRepresentable {
     }
 
     static func dismantleNSView(_ view: WKWebView, coordinator: Coordinator) {
+        // An outgoing document must not publish a delayed scroll event into the new one.
+        coordinator.parent = nil
         view.configuration.userContentController.removeScriptMessageHandler(forName: "mirrorReference", contentWorld: .defaultClient)
     }
 

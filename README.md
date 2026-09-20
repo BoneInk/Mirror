@@ -4,7 +4,7 @@
 
 Mirror 是一款 macOS Markdown 编辑器。你可以边写边预览，也可以选中一段文字，直接向 AI 提问。
 
-[下载 Mirror 1.2.0](https://github.com/BoneInk/Mirror/releases/tag/v1.2.0) · macOS 14+ · Intel / Apple Silicon
+[下载 Mirror 1.3.0](https://github.com/BoneInk/Mirror/releases/tag/v1.3.0) · macOS 14+ · Intel / Apple Silicon
 
 ## 有什么不一样
 
@@ -23,7 +23,7 @@ Mirror 是一款 macOS Markdown 编辑器。你可以边写边预览，也可以
 
 下载安装包，将 Mirror 拖入 Applications。选中文字后点击「提问」；`Return` 发送，`⌘ Return` 换行，`Esc` 关闭气泡。
 
-要引用到已有 Codex 会话，在编辑器或预览中选中文字，右键选择「引用到 Codex 会话…」，预览会话列表并选定目标。引用会带上文件路径与位置，填入 Codex 的未发送草稿；此操作会替换目标会话原有草稿。详见[会话引用说明](docs/codex-thread-reference.md)。
+要引用到已有 Codex 会话，在编辑器或预览中选中文字，右键选择「引用到 Codex 会话…」，预览会话列表并选定目标。选择「在 Mirror 续聊」，退出 Codex 后即可继续原会话；引用带有文件路径与位置。也可选择「在 Codex 打开」填入桌面草稿（会替换原草稿）。详见[会话引用说明](docs/codex-thread-reference.md)。
 
 在设置中配置智能体和气泡记忆。不同运行时需要各自的安装、登录或服务配置；WorkBuddy 需要授权 Token，千问办公目前通过自定义桥接接入。详见[智能体接入说明](docs/agents.md)。
 

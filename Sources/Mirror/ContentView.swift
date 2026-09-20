@@ -510,13 +510,21 @@ private struct RenderedMarkdownContent: View {
                         typography: document.typography,
                         preserveSingleLineBreaks: document.editorSettings.preserveSingleLineBreaks,
                         baseURL: document.fileURL?.deletingLastPathComponent(),
-                        onOpenLocalFile: document.openFile,
+                        onOpenLocalFile: { url in
+                            document.openFile(url)
+                            guard document.fileURL?.standardizedFileURL == url.standardizedFileURL else { return }
+                            document.selectedRange = NSRange(location: 0, length: 0)
+                            document.editorCommand = .select(NSRange(location: 0, length: 0))
+                            scrollSync.source = .outline
+                            scrollSync.position = ScrollPosition(boundary: .top)
+                        },
                         onReferenceToCodex: { text in
                             CodexReference.send(selection: text, title: document.title, fileURL: document.fileURL, theme: document.theme)
                         },
                         syncMode: document.editorSettings.scrollSyncMode,
                         scrollPosition: $scrollSync.position,
                         scrollSource: $scrollSync.source, fileURL: document.fileURL)
+            .id(document.activeTabID)
     }
 }
 
@@ -982,6 +990,7 @@ private struct SidebarView: View {
     @EnvironmentObject private var document: DocumentStore
     @State private var workspaceSelection = Set<String>()
     @State private var workspaceQuery = ""
+    @State private var isMarkdownFilterHovered = false
     @State private var expandedWorkspaceFolders = Set<String>()
 
     private var visibleWorkspaceNodes: [VisibleWorkspaceNode] {
@@ -1045,15 +1054,17 @@ private struct SidebarView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("WORKSPACE")
                         .font(.system(size: 9, weight: .semibold)).tracking(1).foregroundStyle(.tertiary)
-                    Text(document.workspaceURL?.lastPathComponent ?? "No folder open")
-                        .font(.system(size: 11.5, weight: .medium)).lineLimit(1)
+                    Group {
+                        if let root = document.workspaceURL { Text(root.lastPathComponent) }
+                        else { Text("No folder open") }
+                    }.font(.system(size: 11.5, weight: .medium)).lineLimit(1)
                 }
                 Spacer(minLength: 4)
                 Button { document.newDocument() } label: { Image(systemName: "doc.badge.plus") }
                     .help("New document")
                 Menu {
                     Button("Open File…", systemImage: "doc") { document.openDocument() }
-                    Button(document.workspaceURL == nil ? "Open Folder…" : "Change Folder…",
+                    Button(LocalizedStringKey(document.workspaceURL == nil ? "Open Folder…" : "Change Folder…"),
                            systemImage: "folder") { document.chooseWorkspaceFolder() }
                     if let root = document.workspaceURL {
                         Divider()
@@ -1068,10 +1079,6 @@ private struct SidebarView: View {
                             document.showWorkspaceSearch = true
                         }
                         Button("Refresh", systemImage: "arrow.clockwise") { document.refreshWorkspace() }
-                        Button(document.showMarkdownOnly ? "Show All Files" : "Show Markdown Only",
-                               systemImage: "line.3.horizontal.decrease.circle") {
-                            document.showMarkdownOnly.toggle()
-                        }
                         Divider()
                         Button("Close Folder", systemImage: "xmark.circle") { document.closeWorkspaceFolder() }
                     }
@@ -1102,11 +1109,45 @@ private struct SidebarView: View {
                         }
                         .buttonStyle(.plain)
                     }
+                    Button {
+                        document.showMarkdownOnly.toggle()
+                    } label: {
+                        Image(systemName: "line.3.horizontal.decrease")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(document.showMarkdownOnly
+                                ? document.theme.accent : document.theme.foreground.opacity(0.65))
+                            .frame(width: 24, height: 24)
+                            .background {
+                                RoundedRectangle(cornerRadius: 5).fill(document.showMarkdownOnly
+                                    ? document.theme.accent.opacity(document.theme.isDark ? 0.20 : 0.10)
+                                    : document.theme.foreground.opacity(isMarkdownFilterHovered ? 0.07 : 0))
+                            }
+                            .contentShape(RoundedRectangle(cornerRadius: 7))
+                    }
+                    .buttonStyle(.plain)
+                    .fixedSize()
+                    .onHover { isMarkdownFilterHovered = $0 }
+                    .accessibilityLabel("Show Markdown Only")
+                    .accessibilityValue(Text(document.showMarkdownOnly ? "On" : "Off"))
                 }
                 .font(.system(size: 10.5))
                 .padding(.horizontal, 8)
                 .frame(height: 30)
                 .background(ContentSurface(theme: document.theme, radius: 7))
+                .overlay(alignment: .topTrailing) {
+                    if isMarkdownFilterHovered {
+                        Text("Show Markdown Only")
+                            .font(.system(size: 11))
+                            .foregroundStyle(document.theme.foreground)
+                            .padding(.horizontal, 9).padding(.vertical, 6)
+                            .background(ContentSurface(theme: document.theme, radius: 6))
+                            .shadow(color: .black.opacity(0.12), radius: 5, y: 2)
+                            .fixedSize()
+                            .offset(y: 34)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .zIndex(1)
                 .padding(.horizontal, 12).padding(.bottom, 8)
 
                 ScrollViewReader { proxy in
@@ -1472,12 +1513,13 @@ private struct WorkspaceNodeRow: View {
                     .frame(width: 16)
                 Text(node.url.lastPathComponent)
                     .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(document.theme.foreground)
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 if let children = node.children {
                     Text("\(children.count)")
                         .font(.system(size: 8.5, weight: .medium))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(document.theme.foreground.opacity(0.55))
                 }
             }
             .contentShape(Rectangle())
@@ -1536,10 +1578,12 @@ private struct WorkspaceFileRow: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(url.lastPathComponent)
                     .font(.system(size: 10.5, weight: document.isSupportedDocument(url) ? .medium : .regular))
+                    // List selection otherwise supplies white text over our custom row surface.
+                    .foregroundStyle(document.theme.foreground)
                     .lineLimit(1)
                 if showParent {
                     Text(relativeParent)
-                        .font(.system(size: 8.5)).foregroundStyle(.tertiary).lineLimit(1)
+                        .font(.system(size: 8.5)).foregroundStyle(document.theme.foreground.opacity(0.55)).lineLimit(1)
                 }
             }
             Spacer(minLength: 0)
@@ -1549,7 +1593,7 @@ private struct WorkspaceFileRow: View {
         .onTapGesture(count: 2) { document.openWorkspaceFile(url) }
         .onDrag { WorkspaceTransfer.dragProvider(for: draggedURLs) }
         .contextMenu {
-            Button(document.isSupportedDocument(url) ? "Open in Mirror" : "Preview in Mirror") {
+            Button(LocalizedStringKey(document.isSupportedDocument(url) ? "Open in Mirror" : "Preview in Mirror")) {
                 document.openWorkspaceFile(url)
             }
             if !document.isSupportedDocument(url) {
