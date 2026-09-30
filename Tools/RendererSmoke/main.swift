@@ -83,32 +83,14 @@ sequenceDiagram
 [^source]: This footnote is rendered locally.
 """#
 
-let imageSizingSource = "![First](assets/photo.png)\n\n![Second](assets/photo.png)\n\n`![Code](assets/photo.png)`"
-let imageSizingKey = Data("assets/photo.png".utf8).base64EncodedString()
-guard let sizedMarkdown = MarkdownImageSizing.resizing(imageSizingSource, key: imageSizingKey, occurrence: 1, width: 240),
-      let resizedMarkdown = MarkdownImageSizing.resizing(sizedMarkdown, key: imageSizingKey, occurrence: 1, width: 320) else {
-    fputs("Image sizing could not update the Markdown document.\n", stderr)
+let imageSource = "![Photo](assets/photo.png)"
+let imageKey = Data("assets/photo.png".utf8).base64EncodedString()
+let legacyImageSource = imageSource + "\n\n<!-- mirror-image-size: \(imageKey) 0 180 -->\n"
+guard !MarkdownRenderer.render(legacyImageSource).contains("width:180px"),
+      !MarkdownRenderer.render(legacyImageSource).contains("data-mirror-image"),
+      MarkdownRenderer.render(legacyImageSource).contains("src=\"assets/photo.png\"") else {
+    fputs("Removed image sizing still affects rendering.\n", stderr)
     exit(2)
-}
-let sizedHTML = MarkdownRenderer.render(resizedMarkdown)
-guard sizedHTML.contains("width:320px;height:auto"),
-      !sizedHTML.contains("width:240px"),
-      sizedHTML.components(separatedBy: "width:320px").count == 2,
-      resizedMarkdown.components(separatedBy: "mirror-image-size:").count == 2,
-      MarkdownImageSizing.resizing(imageSizingSource, key: imageSizingKey, occurrence: 2, width: 320) == nil,
-      MarkdownImageSizing.resizing(imageSizingSource, key: imageSizingKey, occurrence: 0, width: 0) == nil,
-      MarkdownImageSizing.resizing(imageSizingSource, key: "invalid", occurrence: 0, width: 320) == nil else {
-    fputs("Image sizing persistence, duplicate image, or validation regression.\n", stderr)
-    exit(2)
-}
-let referenceSizingSource = "![Reference][photo]\n\n[photo]: assets/photo.png"
-let rawSizingSource = "<img src=\"assets/photo.png\" width=\"500\" style=\"border:1px solid red;height:200px\">"
-for imageSource in [referenceSizingSource, rawSizingSource] {
-    guard let sized = MarkdownImageSizing.resizing(imageSource, key: imageSizingKey, occurrence: 0, width: 180),
-          MarkdownRenderer.render(sized).contains("width:180px;height:auto") else {
-        fputs("Reference or HTML image sizing regression.\n", stderr)
-        exit(2)
-    }
 }
 
 let html = MarkdownRenderer.document(markdown: markdown,
@@ -173,6 +155,11 @@ guard html.contains("data-math="),
     exit(2)
 }
 
+if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--write-html" {
+    try html.write(toFile: CommandLine.arguments[2], atomically: true, encoding: .utf8)
+    exit(0)
+}
+
 final class SmokeDelegate: NSObject, WKNavigationDelegate {
     private var webView: WKWebView!
     private var attempts = 0
@@ -181,6 +168,9 @@ final class SmokeDelegate: NSObject, WKNavigationDelegate {
         super.init()
         let configuration = WKWebViewConfiguration()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
+        configuration.userContentController.addUserScript(WKUserScript(
+            source: MarkdownDiagramInteraction.previewScript,
+            injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .page))
         webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 900, height: 1100), configuration: configuration)
         webView.navigationDelegate = self
         webView.loadHTMLString(html, baseURL: URL(fileURLWithPath: FileManager.default.currentDirectoryPath))
@@ -223,6 +213,10 @@ final class SmokeDelegate: NSObject, WKNavigationDelegate {
           math: document.querySelectorAll('.katex').length,
           displays: document.querySelectorAll('.katex-display').length,
           diagrams: document.querySelectorAll('.diagram-canvas svg').length,
+          diagramControls: document.querySelectorAll('.diagram-tools').length,
+          diagramResizeHandles: document.querySelectorAll('.diagram-resize').length,
+          interactiveDiagrams: document.querySelectorAll('.diagram-interactive').length,
+          imageHandles: document.querySelectorAll('.mirror-image-resize').length,
           footnotes: document.querySelectorAll('.footnotes li').length,
           headings: document.querySelectorAll('h1').length,
           frontMatter: document.querySelectorAll('.front-matter').length,
@@ -260,6 +254,10 @@ final class SmokeDelegate: NSObject, WKNavigationDelegate {
                   (result["math"] as? Int ?? 0) >= 2,
                   (result["displays"] as? Int ?? 0) >= 1,
                   (result["diagrams"] as? Int ?? 0) == 1,
+                  (result["diagramControls"] as? Int ?? 0) == 1,
+                  (result["diagramResizeHandles"] as? Int ?? 0) == 3,
+                  (result["interactiveDiagrams"] as? Int ?? 0) == 1,
+                  (result["imageHandles"] as? Int ?? 1) == 0,
                   (result["footnotes"] as? Int ?? 0) == 1,
                   (result["headings"] as? Int ?? 0) == 1,
                   (result["frontMatter"] as? Int ?? 0) == 1,

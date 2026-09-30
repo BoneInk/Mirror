@@ -12,7 +12,6 @@ struct MarkdownPreview: NSViewRepresentable {
     let baseURL: URL?
     let onOpenLocalFile: (URL) -> Void
     let onReferenceToCodex: (ReferenceSelection) -> Void
-    let onResizeImage: (String, Int, Int) -> Void
     let syncMode: ScrollSyncMode
     @Binding var scrollPosition: ScrollPosition
     @Binding var scrollSource: ScrollSource
@@ -23,7 +22,6 @@ struct MarkdownPreview: NSViewRepresentable {
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.userContentController.add(context.coordinator, contentWorld: .defaultClient, name: "mirrorReference")
-        config.userContentController.add(context.coordinator, contentWorld: .defaultClient, name: "mirrorImageResize")
         config.defaultWebpagePreferences.allowsContentJavaScript = true
         let localResourceHandler = LocalPreviewResourceHandler()
         config.setURLSchemeHandler(localResourceHandler, forURLScheme: LocalPreviewResources.scheme)
@@ -84,7 +82,6 @@ struct MarkdownPreview: NSViewRepresentable {
     }
 
     static func dismantleNSView(_ view: WKWebView, coordinator: Coordinator) {
-        view.configuration.userContentController.removeScriptMessageHandler(forName: "mirrorImageResize", contentWorld: .defaultClient)
         // An outgoing document must not publish a delayed scroll event into the new one.
         coordinator.parent = nil
         view.configuration.userContentController.removeScriptMessageHandler(forName: "mirrorReference", contentWorld: .defaultClient)
@@ -98,15 +95,6 @@ struct MarkdownPreview: NSViewRepresentable {
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             guard message.frameInfo.isMainFrame else { return }
-            if message.name == "mirrorImageResize" {
-                guard let body = message.body as? [String: Any],
-                      let key = body["key"] as? String,
-                      let occurrence = body["occurrence"] as? Int,
-                      let width = body["width"] as? Int,
-                      navigationRevision == parent?.revision else { return }
-                parent?.onResizeImage(key, occurrence, width)
-                return
-            }
             if let text = message.body as? String { parent?.onReferenceToCodex(ReferenceSelection(text: text)) }
             else if let body = message.body as? [String: Any], let action = body["action"] as? String {
                 if action == "memoryContextMenu", let values = body["ids"] as? [String] {
@@ -310,11 +298,15 @@ struct MarkdownPreview: NSViewRepresentable {
                 controller.removeAllUserScripts()
                 controller.addUserScript(WKUserScript(source: CodexReference.previewScript,
                                                      injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .defaultClient))
-                controller.addUserScript(WKUserScript(source: MarkdownImageSizing.previewScript,
-                                                     injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .defaultClient))
+                controller.addUserScript(WKUserScript(source: MarkdownDiagramInteraction.previewScript,
+                                                     injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .page))
                 if let script = MermaidRuntime.script {
                     controller.addUserScript(
-                        WKUserScript(source: script, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
+                        // Rendering belongs to mirrorRenderAll, after the preview interaction
+                        // script is installed. Mermaid's load handler would otherwise render
+                        // and mark nodes processed before didFinish can attach the controls.
+                        WKUserScript(source: script + "\n;mermaid.initialize({startOnLoad:false});",
+                                     injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .page)
                     )
                 }
                 if let script = MathRuntime.script {

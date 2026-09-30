@@ -56,17 +56,17 @@ enum MarkdownRenderer {
         window.mirrorInstallLayoutObserver=()=>{if(window.__mirrorResizeObserver)return;const article=document.querySelector('article');window.__mirrorResizeObserver=new ResizeObserver(window.mirrorInvalidateLayout);if(article)window.__mirrorResizeObserver.observe(article);window.addEventListener('resize',window.mirrorInvalidateLayout,{passive:true})};
         window.mirrorAwaitMedia=async()=>{const waits=[...document.images].map(image=>image.complete?(image.decode?image.decode().catch(()=>{}):Promise.resolve()):Promise.race([new Promise(resolve=>{image.addEventListener('load',resolve,{once:true});image.addEventListener('error',resolve,{once:true})}),new Promise(resolve=>setTimeout(resolve,1500))]));if(document.fonts?.ready)waits.push(document.fonts.ready.catch(()=>{}));await Promise.all(waits)};
         window.mirrorLayoutStable=()=>performance.now()-window.__mirrorLayoutChangedAt>120;
-        window.mirrorRenderMermaid=async()=>{window.mirrorMermaidDone=false;try{const nodes=[...document.querySelectorAll('.mermaid:not([data-processed])')];if(!nodes.length)return;if(typeof mermaid==='undefined'){for(const node of nodes){node.classList.add('mermaid-error');node.textContent='Mermaid runtime is unavailable.'}return}mermaid.initialize({startOnLoad:false,securityLevel:'strict',theme:'\(mermaidTheme)',fontFamily:'\(javascriptString(typography.previewFontFamily ?? "-apple-system"))'});for(const node of nodes){const source=node.textContent;try{await mermaid.parse(source);await mermaid.run({nodes:[node],suppressErrors:false})}catch(error){node.removeAttribute('data-processed');node.classList.add('mermaid-error');node.textContent='Diagram syntax error\\n'+(error?.message??String(error))}}}finally{window.mirrorMermaidDone=true}};
+        window.mirrorRenderMermaid=async()=>{window.mirrorMermaidDone=false;try{const nodes=[...document.querySelectorAll('.mermaid:not([data-processed])')];if(!nodes.length)return;if(typeof mermaid==='undefined'){for(const node of nodes){node.classList.add('mermaid-error');node.textContent='Mermaid runtime is unavailable.'}return}mermaid.initialize({startOnLoad:false,securityLevel:'strict',theme:'\(mermaidTheme)',fontFamily:'\(javascriptString(typography.previewFontFamily ?? "-apple-system"))'});for(const node of nodes){const source=node.textContent;try{await mermaid.parse(source);await mermaid.run({nodes:[node],suppressErrors:false});window.mirrorInstallDiagram?.(node)}catch(error){node.removeAttribute('data-processed');node.classList.add('mermaid-error');node.textContent='Diagram syntax error\\n'+(error?.message??String(error))}}}finally{window.mirrorMermaidDone=true}};
         window.mirrorRenderMath=async()=>{window.mirrorMathDone=false;try{const nodes=[...document.querySelectorAll('[data-math]:not([data-math-rendered])')];if(!nodes.length)return;if(typeof katex==='undefined'){for(const node of nodes){node.classList.add('math-error');node.textContent='KaTeX runtime is unavailable.\\n'+node.textContent}return}for(const node of nodes){try{const source=new TextDecoder().decode(Uint8Array.from(atob(node.dataset.math),c=>c.charCodeAt(0)));katex.render(source,node,{displayMode:node.dataset.mathDisplay==='true',throwOnError:false,strict:'warn',trust:false,output:'htmlAndMathml'});node.dataset.mathRendered='true'}catch(error){node.classList.add('math-error');node.textContent='Math syntax error\\n'+(error?.message??String(error))}}}finally{window.mirrorMathDone=true}};
-        window.mirrorRenderAll=async()=>{window.mirrorEnhancementsDone=false;try{await Promise.all([window.mirrorRenderMermaid(),window.mirrorRenderMath()]);await window.mirrorAwaitMedia();window.mirrorInstallLayoutObserver();window.mirrorInvalidateLayout()}finally{window.mirrorEnhancementsDone=true}};
-        window.mirrorReplaceContent=(content,sourceLines,title,line,fraction,guide,boundary,generation)=>{const article=document.querySelector('article');if(!article)return false;window.__mirrorContentGeneration=Number(generation)||0;if(window.__mirrorResizeObserver){window.__mirrorResizeObserver.disconnect();window.__mirrorResizeObserver=null}article.innerHTML=String(content??'');article.dataset.sourceLines=String(Math.max(1,Number(sourceLines)||1));document.title=String(title??document.title);window.mirrorInvalidateLayout();window.mirrorInstallLayoutObserver();window.mirrorScrollToPosition(line,fraction,guide,boundary);requestAnimationFrame(()=>{if(window.__mirrorContentGeneration===Number(generation))window.mirrorScrollToPosition(line,fraction,guide,boundary)});Promise.resolve(window.mirrorRenderAll()).then(()=>{if(window.__mirrorContentGeneration!==Number(generation))return;window.mirrorScrollToPosition(line,fraction,guide,boundary);requestAnimationFrame(()=>window.mirrorScrollToPosition(line,fraction,guide,boundary))});return true};
+        window.mirrorRenderAll=async()=>{window.mirrorEnhancementsDone=false;try{await Promise.all([window.mirrorRenderMermaid(),window.mirrorRenderMath()]);for(const node of document.querySelectorAll('.diagram-canvas.mermaid'))window.mirrorInstallDiagram?.(node);await window.mirrorAwaitMedia();window.mirrorInstallLayoutObserver();window.mirrorInvalidateLayout()}finally{window.mirrorEnhancementsDone=true}};
+        window.mirrorReplaceContent=(content,sourceLines,title,line,fraction,guide,boundary,generation)=>{const article=document.querySelector('article');if(!article)return false;window.__mirrorContentGeneration=Number(generation)||0;if(window.__mirrorResizeObserver){window.__mirrorResizeObserver.disconnect();window.__mirrorResizeObserver=null}window.mirrorClearDiagramInteractions?.();article.innerHTML=String(content??'');article.dataset.sourceLines=String(Math.max(1,Number(sourceLines)||1));document.title=String(title??document.title);window.mirrorInvalidateLayout();window.mirrorInstallLayoutObserver();window.mirrorScrollToPosition(line,fraction,guide,boundary);requestAnimationFrame(()=>{if(window.__mirrorContentGeneration===Number(generation))window.mirrorScrollToPosition(line,fraction,guide,boundary)});Promise.resolve(window.mirrorRenderAll()).then(()=>{if(window.__mirrorContentGeneration!==Number(generation))return;window.mirrorScrollToPosition(line,fraction,guide,boundary);requestAnimationFrame(()=>window.mirrorScrollToPosition(line,fraction,guide,boundary))});return true};
         \(autoRender)
         </script></body></html>
         """
     }
 
     static func render(_ markdown: String, preserveSingleLineBreaks: Bool = false) -> String {
-        MarkdownImageSizing.apply(to: render(markdown, inheritedReferences: [:], preserveSingleLineBreaks: preserveSingleLineBreaks), markdown: markdown)
+        render(markdown, inheritedReferences: [:], preserveSingleLineBreaks: preserveSingleLineBreaks)
     }
 
     private static func render(_ markdown: String,
@@ -1127,147 +1127,231 @@ enum MarkdownRenderer {
     }
 }
 
-/// Sizes live in Markdown comments so edits and autosave keep them with the document.
-/// The rendered source and its occurrence distinguish repeated images without relying on line numbers.
-enum MarkdownImageSizing {
-    private static let marker = try! NSRegularExpression(
-        pattern: #"(?m)^<!-- mirror-image-size: ([A-Za-z0-9+/=]+) ([0-9]+) ([0-9]+) -->$"#)
-    private static let styleAttribute = try! NSRegularExpression(pattern: #"\sstyle="([^"]*)""#)
-    private static let images = try! NSRegularExpression(pattern: #"<img\b[^>]*>"#)
-    private static let source = try! NSRegularExpression(pattern: #"\ssrc="([^"]*)""#)
-
-    static func apply(to html: String, markdown: String) -> String {
-        let text = markdown as NSString
-        var sizes: [String: Int] = [:]
-        for match in marker.matches(in: markdown, range: NSRange(location: 0, length: text.length)) {
-            let key = text.substring(with: match.range(at: 1)) + ":" + text.substring(with: match.range(at: 2))
-            if let width = Int(text.substring(with: match.range(at: 3))), (24...10000).contains(width) {
-                sizes[key] = width
-            }
-        }
-        let rendered = html as NSString
-        var occurrences: [String: Int] = [:]
-        var replacements: [(NSRange, String)] = []
-        for match in images.matches(in: html, range: NSRange(location: 0, length: rendered.length)) {
-            let tag = rendered.substring(with: match.range)
-            guard let src = source.firstMatch(in: tag, range: NSRange(location: 0, length: (tag as NSString).length)) else { continue }
-            let value = (tag as NSString).substring(with: src.range(at: 1))
-            let key = Data(value.utf8).base64EncodedString()
-            let occurrence = occurrences[key, default: 0]
-            occurrences[key] = occurrence + 1
-            // These attributes are generated after sanitization, replacing any user supplied identifiers.
-            var updated = tag.replacingOccurrences(of: #"\sdata-mirror-image-(?:key|occurrence)="[^"]*""#, with: "", options: .regularExpression)
-            let attributes = " data-mirror-image-key=\"\(key)\" data-mirror-image-occurrence=\"\(occurrence)\""
-            updated.insert(contentsOf: attributes, at: updated.index(updated.startIndex, offsetBy: 4))
-            if let width = sizes[key + ":" + String(occurrence)] {
-                // Append after existing styles so a persisted width also overrides raw HTML dimensions.
-                updated = updated.replacingOccurrences(of: #"\sstyle="([^"]*)""#, with: "", options: .regularExpression)
-                let styleMatch = styleAttribute.firstMatch(in: tag, range: NSRange(location: 0, length: (tag as NSString).length))
-                let oldStyle = (styleMatch.map { (tag as NSString).substring(with: $0.range(at: 1)) } ?? "")
-                    .replacingOccurrences(of: #"(?i)(?:^|;)\s*(?:width|height)\s*:[^;]*"#, with: ";", options: .regularExpression)
-                updated.insert(contentsOf: " style=\"\(oldStyle);width:\(width)px;height:auto\"", at: updated.index(updated.startIndex, offsetBy: 4))
-            }
-            replacements.append((match.range, updated))
-        }
-        let result = NSMutableString(string: html)
-        for (range, replacement) in replacements.reversed() { result.replaceCharacters(in: range, with: replacement) }
-        return result as String
-    }
-
-    static func resizing(_ markdown: String, key: String, occurrence: Int, width: Int) -> String? {
-        guard occurrence >= 0, (24...10000).contains(width),
-              let data = Data(base64Encoded: key), !data.isEmpty,
-              String(data: data, encoding: .utf8) != nil else { return nil }
-        // Reject messages for images that disappeared while a preview update was in flight.
-        let html = MarkdownRenderer.render(markdown)
-        guard html.contains("data-mirror-image-key=\"\(key)\" data-mirror-image-occurrence=\"\(occurrence)\"") else { return nil }
-        let newMarker = "<!-- mirror-image-size: \(key) \(occurrence) \(width) -->"
-        let text = markdown as NSString
-        for match in marker.matches(in: markdown, range: NSRange(location: 0, length: text.length)) {
-            if text.substring(with: match.range(at: 1)) == key,
-               Int(text.substring(with: match.range(at: 2))) == occurrence {
-                return text.replacingCharacters(in: match.range, with: newMarker)
-            }
-        }
-        return markdown + (markdown.hasSuffix("\n") ? "\n" : "\n\n") + newMarker + "\n"
-    }
-
+/// Preview-only navigation of rendered diagrams; exports keep their original SVG layout.
+enum MarkdownDiagramInteraction {
     static let previewScript = #"""
     (() => {
       const style = document.createElement('style');
       style.textContent = `
-        .mirror-image-frame{display:inline-block;position:relative;max-width:100%;line-height:0;vertical-align:middle}
-        .mirror-image-frame>img{display:block;max-width:100%;height:auto}
-        .mirror-image-resize{position:absolute;right:0;bottom:0;width:20px;height:20px;padding:0;border:1px solid var(--bg);border-radius:4px;background:var(--accent);color:var(--bg);cursor:nwse-resize;touch-action:none;opacity:0;transition:opacity .12s;font:14px/18px system-ui}
-        .mirror-image-frame:hover>.mirror-image-resize,.mirror-image-frame:focus-within>.mirror-image-resize,.mirror-image-frame.resizing>.mirror-image-resize{opacity:1}
-        .mirror-image-resize:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-        @media print{.mirror-image-resize{display:none}}
+        .diagram-tools{display:flex;align-items:center;gap:4px;margin-left:auto;text-transform:none;letter-spacing:normal}
+        .diagram-tools button{width:25px;height:24px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--fg);font:16px/1 system-ui;cursor:pointer;padding:0}
+        .diagram-tools button:hover{background:var(--code)}
+        .diagram-tools button:disabled{opacity:.35;cursor:default}
+        .diagram-tools button:focus-visible,.diagram-interactive:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+        .diagram-zoom{min-width:42px;text-align:center;font:11px/1 system-ui;color:var(--muted);font-variant-numeric:tabular-nums}
+        .diagram-canvas.diagram-interactive{position:relative;padding:0;overflow:hidden;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+        .diagram-interactive.dragging{cursor:grabbing}
+        .diagram-frame{position:relative;max-width:100%}
+        .diagram-frame.resizing{user-select:none;-webkit-user-select:none}
+        .diagram-resize{position:absolute;z-index:3;padding:0;border:0;background:transparent;touch-action:none}
+        .diagram-resize-right{right:0;top:32px;bottom:14px;width:8px;cursor:ew-resize}
+        .diagram-resize-bottom{left:0;right:14px;bottom:0;height:8px;cursor:ns-resize}
+        .diagram-resize-corner{right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize;background:repeating-linear-gradient(135deg,transparent 0 3px,var(--muted) 3px 4px,transparent 4px 6px);clip-path:polygon(100% 0,100% 100%,0 100%);opacity:.5}
+        .diagram-resize-right:hover,.diagram-resize-bottom:hover{background:color-mix(in srgb,var(--accent) 25%,transparent)}
+        .diagram-resize:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+        .diagram-content{position:absolute;left:0;top:0;transform-origin:0 0}
+        .diagram-canvas .diagram-content>svg{display:block;width:100%;height:100%;max-width:none!important;margin:0}
+        @media print{
+          .diagram-tools,.diagram-resize{display:none!important}
+          .diagram-frame{width:auto!important;max-width:none!important}
+          .diagram-canvas.diagram-interactive{height:auto!important;padding:1.25em;overflow:visible;cursor:auto}
+          .diagram-content{position:static;width:auto!important;height:auto!important;transform:none!important}
+          .diagram-canvas .diagram-content>svg{width:100%;height:auto;max-width:100%!important;margin:auto}
+        }
       `;
       document.head.appendChild(style);
-      let drag = null;
-      const finish = (save) => {
-        if (!drag) return;
-        const current = drag; drag = null;
-        current.frame.classList.remove('resizing');
-        if (current.handle.hasPointerCapture(current.pointer)) current.handle.releasePointerCapture(current.pointer);
-        if (!save) current.image.style.cssText = current.style;
-        else if (current.changed && current.image.isConnected) persist(current.image);
+      const controllers = new Map();
+      window.mirrorClearDiagramInteractions = () => {
+        for (const controller of controllers.values()) controller.dispose();
+        controllers.clear();
       };
-      function persist(image) {
-        window.webkit?.messageHandlers.mirrorImageResize?.postMessage({
-          key:image.dataset.mirrorImageKey, occurrence:Number(image.dataset.mirrorImageOccurrence),
-          width:Math.round(image.getBoundingClientRect().width)
+      window.addEventListener('blur', () => {
+        for (const controller of controllers.values()) controller.cancel();
+      });
+      window.mirrorInstallDiagram = canvas => {
+        if (!canvas.isConnected || controllers.has(canvas)) return;
+        const svg = canvas.querySelector('svg'), block = canvas.closest('.diagram-block'), header = block?.querySelector('.code-header');
+        if (!svg || !header) return;
+        block.classList.add('diagram-frame');
+        const box = svg.viewBox.baseVal;
+        const width = box.width || svg.getBoundingClientRect().width;
+        const height = box.height || svg.getBoundingClientRect().height;
+        if (!(width > 0 && height > 0)) return;
+        const chinese = (navigator.language || '').startsWith('zh');
+        canvas.classList.add('diagram-interactive');
+        canvas.tabIndex = 0;
+        canvas.setAttribute('role', 'region');
+        canvas.setAttribute('aria-label', chinese ? '流程图：拖拽移动，加减键缩放，0 复位' : 'Diagram: drag to pan, plus/minus to zoom, 0 to reset');
+        canvas.title = chinese ? '拖拽移动；⌘/Ctrl + 滚轮或触控板捏合缩放；双击复位' : 'Drag to pan; ⌘/Ctrl + wheel or pinch to zoom; double-click to reset';
+        const content = document.createElement('div'); content.className = 'diagram-content';
+        content.style.width = `${width}px`; content.style.height = `${height}px`;
+        svg.replaceWith(content); content.appendChild(svg);
+        const tools = document.createElement('div'); tools.className = 'diagram-tools';
+        const button = (text, label) => {
+          const item = document.createElement('button'); item.type = 'button'; item.textContent = text;
+          item.title = label; item.setAttribute('aria-label', label); tools.appendChild(item); return item;
+        };
+        const smaller = button('−', chinese ? '缩小流程图' : 'Zoom out diagram');
+        const output = document.createElement('span'); output.className = 'diagram-zoom'; tools.appendChild(output);
+        const larger = button('+', chinese ? '放大流程图' : 'Zoom in diagram');
+        const reset = button('↺', chinese ? '复位并适配流程图' : 'Reset and fit diagram');
+        header.appendChild(tools);
+        const handles = ['right', 'bottom', 'corner'].map(edge => {
+          const handle = document.createElement('button'); handle.type = 'button';
+          handle.className = `diagram-resize diagram-resize-${edge}`; handle.dataset.edge = edge;
+          handle.title = chinese ? `拖动${edge === 'right' ? '右边框调整宽度' : edge === 'bottom' ? '下边框调整高度' : '右下角调整外框宽高'}；方向键微调；Esc 取消`
+            : `Drag ${edge === 'right' ? 'right border to resize width' : edge === 'bottom' ? 'bottom border to resize height' : 'corner to resize frame'}; arrow keys adjust; Escape to cancel`;
+          handle.setAttribute('aria-label', handle.title); block.appendChild(handle); return handle;
         });
-      }
-      function resize(image, width) {
-        const frame = image.parentElement;
-        // Use the containing paragraph's available width; the frame itself tracks the image.
-        let container = frame.parentElement;
-        while (container.parentElement && getComputedStyle(container).display === 'inline') container = container.parentElement;
-        const limit = Math.min(10000, container.getBoundingClientRect().width);
-        if (limit < 24) return;
-        image.style.setProperty('width', `${Math.round(Math.max(24, Math.min(limit, width)))}px`);
-        image.style.setProperty('height', 'auto');
-      }
-      function install() {
-        for (const image of document.querySelectorAll('article img[data-mirror-image-key]')) {
-          if (image.parentElement.classList.contains('mirror-image-frame')) continue;
-          const frame = document.createElement('span'); frame.className='mirror-image-frame';
-          image.replaceWith(frame); frame.appendChild(image);
-          const handle=document.createElement('button'); handle.type='button';handle.className='mirror-image-resize';handle.textContent='↘';
-          const chinese=(navigator.language||'').startsWith('zh');
-          handle.title=chinese?'拖拽调整图片大小；方向键微调':'Drag to resize image; arrow keys adjust size';
-          handle.setAttribute('aria-label',handle.title);frame.appendChild(handle);
-          handle.addEventListener('click',event=>{event.preventDefault();event.stopPropagation()});
-          handle.addEventListener('pointerdown',event=>{
-            if(event.button!==0 || !image.complete || !image.naturalWidth)return;
-            event.preventDefault();event.stopPropagation();finish(false);
-            const rect=image.getBoundingClientRect();
-            drag={image,frame,handle,pointer:event.pointerId,x:event.clientX,y:event.clientY,width:rect.width,ratio:rect.width/rect.height,style:image.style.cssText,changed:false};
-            frame.classList.add('resizing');handle.setPointerCapture(event.pointerId);
-          });
-          handle.addEventListener('pointermove',event=>{
-            if(!drag || drag.handle!==handle || drag.pointer!==event.pointerId)return;
-            event.preventDefault();
-            const dx=event.clientX-drag.x,dy=(event.clientY-drag.y)*drag.ratio;
-            resize(image,drag.width+(Math.abs(dx)>=Math.abs(dy)?dx:dy));
-            drag.changed=Math.abs(image.getBoundingClientRect().width-drag.width)>=1;
-          });
-          handle.addEventListener('pointerup',event=>{if(drag?.handle===handle && drag.pointer===event.pointerId)finish(true)});
-          handle.addEventListener('pointercancel',()=>{if(drag?.handle===handle)finish(false)});
-          handle.addEventListener('lostpointercapture',()=>{if(drag?.handle===handle)finish(false)});
-          handle.addEventListener('keydown',event=>{
-            if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key))return;
-            event.preventDefault();event.stopPropagation();
-            resize(image,image.getBoundingClientRect().width+(['ArrowRight','ArrowUp'].includes(event.key)?1:-1)*(event.shiftKey?10:1));persist(image);
+        let scale = 1, fitScale = 1, x = 0, y = 0, drag = null, gesture = null, lastWidth = -1, lastHeight = -1, manualHeight = null, fitted = true;
+        const minimum = () => fitScale * .25;
+        const maximum = () => Math.max(1, fitScale) * 8;
+        const paint = () => {
+          content.style.transform = `translate(${x}px,${y}px) scale(${scale})`;
+          output.textContent = `${Math.round(scale / fitScale * 100)}%`;
+          smaller.disabled = scale <= minimum() + .00001; larger.disabled = scale >= maximum() - .00001;
+        };
+        const fit = () => {
+          scale = fitScale; x = (canvas.clientWidth - width * scale) / 2; y = (canvas.clientHeight - height * scale) / 2;
+          fitted = true; paint();
+        };
+        const layout = (force = false) => {
+          const available = canvas.clientWidth;
+          if (available <= 0) return;
+          const viewportHeight = manualHeight ?? Math.max(160, Math.min(520, height * Math.min(1, Math.max(1, available - 40) / width) + 40));
+          if (force !== true && available === lastWidth && viewportHeight === lastHeight) return;
+          const oldWidth = lastWidth > 0 ? lastWidth : available, oldHeight = lastHeight > 0 ? lastHeight : viewportHeight;
+          const oldFit = fitScale;
+          const pointX = (oldWidth / 2 - x) / scale, pointY = (oldHeight / 2 - y) / scale;
+          lastWidth = available; lastHeight = viewportHeight;
+          canvas.style.height = `${viewportHeight}px`;
+          fitScale = Math.min(1, Math.max(1, available - 40) / width, (viewportHeight - 40) / height);
+          if (fitted) fit();
+          else {
+            scale = Math.max(minimum(), Math.min(maximum(), scale * fitScale / oldFit));
+            x = available / 2 - pointX * scale; y = viewportHeight / 2 - pointY * scale; paint();
+          }
+        };
+        const resizeFrame = (nextWidth, nextHeight) => {
+          const parent = block.parentElement, style = getComputedStyle(parent);
+          const limit = parent.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0);
+          block.style.width = `${Math.max(Math.min(280, limit), Math.min(limit, nextWidth))}px`;
+          manualHeight = Math.max(120, Math.min(1600, nextHeight));
+          fitted = true; layout(true);
+          window.mirrorInvalidateLayout?.();
+        };
+        const zoom = (next, px = canvas.clientWidth / 2, py = canvas.clientHeight / 2) => {
+          next = Math.max(minimum(), Math.min(maximum(), next));
+          finish(false);
+          const ratio = next / scale;
+          x = px - (px - x) * ratio; y = py - (py - y) * ratio; scale = next;
+          fitted = false; paint();
+        };
+        const finish = cancel => {
+          if (!drag) return;
+          const current = drag; drag = null; canvas.classList.remove('dragging'); block.classList.remove('resizing');
+          if (cancel) {
+            if (current.resizing) {
+              block.style.width = current.frameStyleWidth; manualHeight = current.manualHeight;
+              fitted = true; layout(true); fitScale = current.fitScale;
+            }
+            x = current.x; y = current.y; scale = current.scale; fitted = current.fitted; paint();
+          }
+          if (current.capture.hasPointerCapture(current.id)) current.capture.releasePointerCapture(current.id);
+        };
+        const resetFrame = () => {
+          finish(true); block.style.width = ''; manualHeight = null; fitted = true; layout(true); fit();
+        };
+        smaller.addEventListener('click', () => zoom(scale / 1.2));
+        larger.addEventListener('click', () => zoom(scale * 1.2));
+        reset.addEventListener('click', resetFrame);
+        canvas.addEventListener('pointerdown', event => {
+          if (event.button !== 0 || event.target.closest('a') || drag || gesture) return;
+          event.preventDefault(); canvas.focus({preventScroll:true});
+          drag = {id:event.pointerId, px:event.clientX, py:event.clientY, x, y, scale, fitted, capture:canvas};
+          canvas.setPointerCapture(event.pointerId); canvas.classList.add('dragging');
+        });
+        canvas.addEventListener('pointermove', event => {
+          if (!drag || drag.resizing || drag.id !== event.pointerId) return;
+          x = drag.x + event.clientX - drag.px; y = drag.y + event.clientY - drag.py;
+          fitted = false; paint();
+        });
+        block.addEventListener('pointerdown', event => {
+          const handle = event.target.closest('.diagram-resize');
+          if (!handles.includes(handle) || event.button !== 0 || drag || gesture) return;
+          event.preventDefault(); event.stopPropagation(); handle.focus({preventScroll:true});
+          drag = {id:event.pointerId, px:event.clientX, py:event.clientY, x, y, scale, fitScale, fitted, resizing:handle.dataset.edge,
+            frameWidth:block.getBoundingClientRect().width, frameHeight:canvas.clientHeight, frameStyleWidth:block.style.width, manualHeight, capture:block};
+          block.setPointerCapture(event.pointerId); block.classList.add('resizing');
+        });
+        block.addEventListener('pointermove', event => {
+          if (!drag?.resizing || drag.id !== event.pointerId) return;
+          event.preventDefault();
+          resizeFrame(drag.frameWidth + (drag.resizing === 'bottom' ? 0 : event.clientX - drag.px),
+            drag.frameHeight + (drag.resizing === 'right' ? 0 : event.clientY - drag.py));
+        });
+        block.addEventListener('pointerup', event => { if (drag?.resizing && drag.id === event.pointerId) finish(false); });
+        block.addEventListener('pointercancel', event => { if (drag?.resizing && drag.id === event.pointerId) finish(true); });
+        block.addEventListener('lostpointercapture', () => { if (drag?.resizing) finish(true); });
+        for (const handle of handles) {
+          handle.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); });
+          handle.addEventListener('keydown', event => {
+            if (event.key === 'Escape') { event.preventDefault(); finish(true); return; }
+            if (event.metaKey || event.ctrlKey || event.altKey) return;
+            if (event.key === '0' || event.key === 'Home') { event.preventDefault(); resetFrame(); return; }
+            if (!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)) return;
+            event.preventDefault(); event.stopPropagation(); finish(false);
+            const step = event.shiftKey ? 10 : 1, edge = handle.dataset.edge;
+            resizeFrame(block.getBoundingClientRect().width + (edge !== 'bottom' ? event.key === 'ArrowRight' ? step : event.key === 'ArrowLeft' ? -step : 0 : 0),
+              canvas.clientHeight + (edge !== 'right' ? event.key === 'ArrowDown' ? step : event.key === 'ArrowUp' ? -step : 0 : 0));
           });
         }
-      }
-      document.addEventListener('keydown',event=>{if(event.key==='Escape' && drag){event.preventDefault();finish(false)}});
-      window.addEventListener('blur',()=>finish(false));
-      const article=document.querySelector('article');
-      if(article)new MutationObserver(()=>{if(drag && !drag.image.isConnected)finish(false);install()}).observe(article,{childList:true,subtree:true});
-      install();
+        canvas.addEventListener('pointerup', event => { if (drag?.id === event.pointerId) finish(false); });
+        canvas.addEventListener('pointercancel', event => { if (drag?.id === event.pointerId) finish(true); });
+        canvas.addEventListener('lostpointercapture', () => { if (drag && !drag.resizing) finish(true); });
+        canvas.addEventListener('dblclick', event => {
+          if (event.target.closest('a,.diagram-resize')) return;
+          event.preventDefault(); resetFrame();
+        });
+        canvas.addEventListener('wheel', event => {
+          if (!event.ctrlKey && !event.metaKey) return;
+          event.preventDefault();
+          const rect = canvas.getBoundingClientRect();
+          const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? canvas.clientHeight : 1);
+          zoom(scale * Math.exp(-Math.max(-100, Math.min(100, delta)) * .01), event.clientX - rect.left, event.clientY - rect.top);
+        }, {passive:false});
+        // WebKit reports trackpad magnification as gesture events rather than Ctrl-wheel.
+        canvas.addEventListener('gesturestart', event => {
+          event.preventDefault(); finish(true);
+          const rect = canvas.getBoundingClientRect();
+          gesture = {scale, x:event.clientX - rect.left, y:event.clientY - rect.top};
+        }, {passive:false});
+        canvas.addEventListener('gesturechange', event => {
+          if (!gesture) return;
+          event.preventDefault(); zoom(gesture.scale * event.scale, gesture.x, gesture.y);
+        }, {passive:false});
+        canvas.addEventListener('gestureend', event => { event.preventDefault(); gesture = null; }, {passive:false});
+        canvas.addEventListener('keydown', event => {
+          if (event.target !== canvas) return;
+          if (event.key === 'Escape') { finish(true); return; }
+          if (event.metaKey || event.ctrlKey || event.altKey) return;
+          if (['+', '=', '-', '0', 'Home', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
+            event.preventDefault(); event.stopPropagation(); finish(false);
+            if (event.key === '+' || event.key === '=') zoom(scale * 1.2);
+            else if (event.key === '-') zoom(scale / 1.2);
+            else if (event.key === '0' || event.key === 'Home') resetFrame();
+            else {
+              const step = event.shiftKey ? 80 : 20;
+              x += event.key === 'ArrowLeft' ? step : event.key === 'ArrowRight' ? -step : 0;
+              y += event.key === 'ArrowUp' ? step : event.key === 'ArrowDown' ? -step : 0;
+              fitted = false; paint();
+            }
+          }
+        });
+        const observer = new ResizeObserver(layout); observer.observe(canvas); layout();
+        controllers.set(canvas, {cancel:() => { finish(true); gesture = null; }, dispose:() => { finish(true); observer.disconnect(); }});
+      };
+      for (const canvas of document.querySelectorAll('.diagram-canvas.mermaid')) window.mirrorInstallDiagram(canvas);
     })();
     """#
 }

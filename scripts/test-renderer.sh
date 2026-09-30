@@ -2,7 +2,7 @@
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-OUTPUT_DIR="${TMPDIR:-/tmp}/MirrorRendererSmoke"
+OUTPUT_DIR="${MIRROR_RENDERER_OUTPUT_DIR:-${TMPDIR:-/tmp}/MirrorRendererSmoke}"
 OUTPUT="$OUTPUT_DIR/renderer-smoke"
 
 cd "$PROJECT_DIR"
@@ -19,4 +19,4 @@ swiftc \
   -framework WebKit \
   -o "$OUTPUT"
 
-"$OUTPUT"
+"$OUTPUT" "$@"

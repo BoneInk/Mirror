@@ -29,7 +29,7 @@ The app is ad-hoc signed and has not been notarized by Apple.
 
 If macOS says Apple cannot verify Mirror, dismiss the alert, then go to **System Settings → Privacy & Security → Open Anyway** and confirm. Only proceed if you trust the download from this project’s Release page. See [Apple’s instructions](https://support.apple.com/en-us/102445).
 
-In preview or reading mode, hover over an image and drag its bottom-right handle to resize it proportionally. Focus the handle to adjust with arrow keys (Shift for 10-pixel steps), or press Esc to cancel a drag. Sizes are saved as Markdown comments and retained when reopening or exporting.
+In preview or reading mode, drag the right border, bottom border, or bottom-right corner to resize the Mermaid frame; the diagram automatically fits the frame, or drag the diagram itself to pan. Zoom with the header buttons, `⌘/Ctrl + wheel`, or a trackpad pinch. Double-click or use the reset button to fit the diagram again. When focused, use arrow keys to pan, plus/minus to zoom, `0` to reset, or `Esc` to cancel a drag. These interactions only affect the preview; Markdown and exported diagrams keep their original layout. Image resize handles have been removed, and size comments saved by older versions are ignored.
 
 ## Build from source
 
