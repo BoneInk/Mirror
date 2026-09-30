@@ -43,3 +43,7 @@ bash scripts/build-dmg.sh --skip-build
 ```
 
 Outputs are in `dist/`. Regression checks are in `scripts/test-*.sh`.
+
+## Windows edition (initial port)
+
+An independent [Windows desktop project](Windows/README.md) preserves Mirror’s visual style and core Markdown, reading, offline rendering, and selection-based AI workflows. Built with Electron and React, with NSIS and portable build targets. See the Windows README for setup, supported agent protocols, and current parity limits.

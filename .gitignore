@@ -7,3 +7,11 @@
 dist/
 DerivedData/
 *.xcuserstate
+
+# Windows / Electron
+Windows/node_modules/
+Windows/dist/
+Windows/release/
+Windows/test-results/
+Windows/playwright-report/
+Windows/public/katex/
