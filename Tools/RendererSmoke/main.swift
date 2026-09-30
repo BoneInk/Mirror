@@ -83,6 +83,34 @@ sequenceDiagram
 [^source]: This footnote is rendered locally.
 """#
 
+let imageSizingSource = "![First](assets/photo.png)\n\n![Second](assets/photo.png)\n\n`![Code](assets/photo.png)`"
+let imageSizingKey = Data("assets/photo.png".utf8).base64EncodedString()
+guard let sizedMarkdown = MarkdownImageSizing.resizing(imageSizingSource, key: imageSizingKey, occurrence: 1, width: 240),
+      let resizedMarkdown = MarkdownImageSizing.resizing(sizedMarkdown, key: imageSizingKey, occurrence: 1, width: 320) else {
+    fputs("Image sizing could not update the Markdown document.\n", stderr)
+    exit(2)
+}
+let sizedHTML = MarkdownRenderer.render(resizedMarkdown)
+guard sizedHTML.contains("width:320px;height:auto"),
+      !sizedHTML.contains("width:240px"),
+      sizedHTML.components(separatedBy: "width:320px").count == 2,
+      resizedMarkdown.components(separatedBy: "mirror-image-size:").count == 2,
+      MarkdownImageSizing.resizing(imageSizingSource, key: imageSizingKey, occurrence: 2, width: 320) == nil,
+      MarkdownImageSizing.resizing(imageSizingSource, key: imageSizingKey, occurrence: 0, width: 0) == nil,
+      MarkdownImageSizing.resizing(imageSizingSource, key: "invalid", occurrence: 0, width: 320) == nil else {
+    fputs("Image sizing persistence, duplicate image, or validation regression.\n", stderr)
+    exit(2)
+}
+let referenceSizingSource = "![Reference][photo]\n\n[photo]: assets/photo.png"
+let rawSizingSource = "<img src=\"assets/photo.png\" width=\"500\" style=\"border:1px solid red;height:200px\">"
+for imageSource in [referenceSizingSource, rawSizingSource] {
+    guard let sized = MarkdownImageSizing.resizing(imageSource, key: imageSizingKey, occurrence: 0, width: 180),
+          MarkdownRenderer.render(sized).contains("width:180px;height:auto") else {
+        fputs("Reference or HTML image sizing regression.\n", stderr)
+        exit(2)
+    }
+}
+
 let html = MarkdownRenderer.document(markdown: markdown,
                                      title: "Renderer smoke test",
                                      theme: .paper,

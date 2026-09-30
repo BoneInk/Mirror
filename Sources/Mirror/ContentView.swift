@@ -521,6 +521,11 @@ private struct RenderedMarkdownContent: View {
                         onReferenceToCodex: { text in
                             CodexReference.send(selection: text, title: document.title, fileURL: document.fileURL, theme: document.theme)
                         },
+                        onResizeImage: { key, occurrence, width in
+                            if let updated = MarkdownImageSizing.resizing(document.text, key: key, occurrence: occurrence, width: width) {
+                                document.text = updated
+                            }
+                        },
                         syncMode: document.editorSettings.scrollSyncMode,
                         scrollPosition: $scrollSync.position,
                         scrollSource: $scrollSync.source, fileURL: document.fileURL)

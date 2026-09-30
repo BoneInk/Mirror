@@ -66,7 +66,7 @@ enum MarkdownRenderer {
     }
 
     static func render(_ markdown: String, preserveSingleLineBreaks: Bool = false) -> String {
-        render(markdown, inheritedReferences: [:], preserveSingleLineBreaks: preserveSingleLineBreaks)
+        MarkdownImageSizing.apply(to: render(markdown, inheritedReferences: [:], preserveSingleLineBreaks: preserveSingleLineBreaks), markdown: markdown)
     }
 
     private static func render(_ markdown: String,
@@ -1125,4 +1125,149 @@ enum MarkdownRenderer {
             .replacingOccurrences(of: ">", with: "&gt;")
             .replacingOccurrences(of: "\"", with: "&quot;")
     }
+}
+
+/// Sizes live in Markdown comments so edits and autosave keep them with the document.
+/// The rendered source and its occurrence distinguish repeated images without relying on line numbers.
+enum MarkdownImageSizing {
+    private static let marker = try! NSRegularExpression(
+        pattern: #"(?m)^<!-- mirror-image-size: ([A-Za-z0-9+/=]+) ([0-9]+) ([0-9]+) -->$"#)
+    private static let styleAttribute = try! NSRegularExpression(pattern: #"\sstyle="([^"]*)""#)
+    private static let images = try! NSRegularExpression(pattern: #"<img\b[^>]*>"#)
+    private static let source = try! NSRegularExpression(pattern: #"\ssrc="([^"]*)""#)
+
+    static func apply(to html: String, markdown: String) -> String {
+        let text = markdown as NSString
+        var sizes: [String: Int] = [:]
+        for match in marker.matches(in: markdown, range: NSRange(location: 0, length: text.length)) {
+            let key = text.substring(with: match.range(at: 1)) + ":" + text.substring(with: match.range(at: 2))
+            if let width = Int(text.substring(with: match.range(at: 3))), (24...10000).contains(width) {
+                sizes[key] = width
+            }
+        }
+        let rendered = html as NSString
+        var occurrences: [String: Int] = [:]
+        var replacements: [(NSRange, String)] = []
+        for match in images.matches(in: html, range: NSRange(location: 0, length: rendered.length)) {
+            let tag = rendered.substring(with: match.range)
+            guard let src = source.firstMatch(in: tag, range: NSRange(location: 0, length: (tag as NSString).length)) else { continue }
+            let value = (tag as NSString).substring(with: src.range(at: 1))
+            let key = Data(value.utf8).base64EncodedString()
+            let occurrence = occurrences[key, default: 0]
+            occurrences[key] = occurrence + 1
+            // These attributes are generated after sanitization, replacing any user supplied identifiers.
+            var updated = tag.replacingOccurrences(of: #"\sdata-mirror-image-(?:key|occurrence)="[^"]*""#, with: "", options: .regularExpression)
+            let attributes = " data-mirror-image-key=\"\(key)\" data-mirror-image-occurrence=\"\(occurrence)\""
+            updated.insert(contentsOf: attributes, at: updated.index(updated.startIndex, offsetBy: 4))
+            if let width = sizes[key + ":" + String(occurrence)] {
+                // Append after existing styles so a persisted width also overrides raw HTML dimensions.
+                updated = updated.replacingOccurrences(of: #"\sstyle="([^"]*)""#, with: "", options: .regularExpression)
+                let styleMatch = styleAttribute.firstMatch(in: tag, range: NSRange(location: 0, length: (tag as NSString).length))
+                let oldStyle = (styleMatch.map { (tag as NSString).substring(with: $0.range(at: 1)) } ?? "")
+                    .replacingOccurrences(of: #"(?i)(?:^|;)\s*(?:width|height)\s*:[^;]*"#, with: ";", options: .regularExpression)
+                updated.insert(contentsOf: " style=\"\(oldStyle);width:\(width)px;height:auto\"", at: updated.index(updated.startIndex, offsetBy: 4))
+            }
+            replacements.append((match.range, updated))
+        }
+        let result = NSMutableString(string: html)
+        for (range, replacement) in replacements.reversed() { result.replaceCharacters(in: range, with: replacement) }
+        return result as String
+    }
+
+    static func resizing(_ markdown: String, key: String, occurrence: Int, width: Int) -> String? {
+        guard occurrence >= 0, (24...10000).contains(width),
+              let data = Data(base64Encoded: key), !data.isEmpty,
+              String(data: data, encoding: .utf8) != nil else { return nil }
+        // Reject messages for images that disappeared while a preview update was in flight.
+        let html = MarkdownRenderer.render(markdown)
+        guard html.contains("data-mirror-image-key=\"\(key)\" data-mirror-image-occurrence=\"\(occurrence)\"") else { return nil }
+        let newMarker = "<!-- mirror-image-size: \(key) \(occurrence) \(width) -->"
+        let text = markdown as NSString
+        for match in marker.matches(in: markdown, range: NSRange(location: 0, length: text.length)) {
+            if text.substring(with: match.range(at: 1)) == key,
+               Int(text.substring(with: match.range(at: 2))) == occurrence {
+                return text.replacingCharacters(in: match.range, with: newMarker)
+            }
+        }
+        return markdown + (markdown.hasSuffix("\n") ? "\n" : "\n\n") + newMarker + "\n"
+    }
+
+    static let previewScript = #"""
+    (() => {
+      const style = document.createElement('style');
+      style.textContent = `
+        .mirror-image-frame{display:inline-block;position:relative;max-width:100%;line-height:0;vertical-align:middle}
+        .mirror-image-frame>img{display:block;max-width:100%;height:auto}
+        .mirror-image-resize{position:absolute;right:0;bottom:0;width:20px;height:20px;padding:0;border:1px solid var(--bg);border-radius:4px;background:var(--accent);color:var(--bg);cursor:nwse-resize;touch-action:none;opacity:0;transition:opacity .12s;font:14px/18px system-ui}
+        .mirror-image-frame:hover>.mirror-image-resize,.mirror-image-frame:focus-within>.mirror-image-resize,.mirror-image-frame.resizing>.mirror-image-resize{opacity:1}
+        .mirror-image-resize:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+        @media print{.mirror-image-resize{display:none}}
+      `;
+      document.head.appendChild(style);
+      let drag = null;
+      const finish = (save) => {
+        if (!drag) return;
+        const current = drag; drag = null;
+        current.frame.classList.remove('resizing');
+        if (current.handle.hasPointerCapture(current.pointer)) current.handle.releasePointerCapture(current.pointer);
+        if (!save) current.image.style.cssText = current.style;
+        else if (current.changed && current.image.isConnected) persist(current.image);
+      };
+      function persist(image) {
+        window.webkit?.messageHandlers.mirrorImageResize?.postMessage({
+          key:image.dataset.mirrorImageKey, occurrence:Number(image.dataset.mirrorImageOccurrence),
+          width:Math.round(image.getBoundingClientRect().width)
+        });
+      }
+      function resize(image, width) {
+        const frame = image.parentElement;
+        // Use the containing paragraph's available width; the frame itself tracks the image.
+        let container = frame.parentElement;
+        while (container.parentElement && getComputedStyle(container).display === 'inline') container = container.parentElement;
+        const limit = Math.min(10000, container.getBoundingClientRect().width);
+        if (limit < 24) return;
+        image.style.setProperty('width', `${Math.round(Math.max(24, Math.min(limit, width)))}px`);
+        image.style.setProperty('height', 'auto');
+      }
+      function install() {
+        for (const image of document.querySelectorAll('article img[data-mirror-image-key]')) {
+          if (image.parentElement.classList.contains('mirror-image-frame')) continue;
+          const frame = document.createElement('span'); frame.className='mirror-image-frame';
+          image.replaceWith(frame); frame.appendChild(image);
+          const handle=document.createElement('button'); handle.type='button';handle.className='mirror-image-resize';handle.textContent='↘';
+          const chinese=(navigator.language||'').startsWith('zh');
+          handle.title=chinese?'拖拽调整图片大小；方向键微调':'Drag to resize image; arrow keys adjust size';
+          handle.setAttribute('aria-label',handle.title);frame.appendChild(handle);
+          handle.addEventListener('click',event=>{event.preventDefault();event.stopPropagation()});
+          handle.addEventListener('pointerdown',event=>{
+            if(event.button!==0 || !image.complete || !image.naturalWidth)return;
+            event.preventDefault();event.stopPropagation();finish(false);
+            const rect=image.getBoundingClientRect();
+            drag={image,frame,handle,pointer:event.pointerId,x:event.clientX,y:event.clientY,width:rect.width,ratio:rect.width/rect.height,style:image.style.cssText,changed:false};
+            frame.classList.add('resizing');handle.setPointerCapture(event.pointerId);
+          });
+          handle.addEventListener('pointermove',event=>{
+            if(!drag || drag.handle!==handle || drag.pointer!==event.pointerId)return;
+            event.preventDefault();
+            const dx=event.clientX-drag.x,dy=(event.clientY-drag.y)*drag.ratio;
+            resize(image,drag.width+(Math.abs(dx)>=Math.abs(dy)?dx:dy));
+            drag.changed=Math.abs(image.getBoundingClientRect().width-drag.width)>=1;
+          });
+          handle.addEventListener('pointerup',event=>{if(drag?.handle===handle && drag.pointer===event.pointerId)finish(true)});
+          handle.addEventListener('pointercancel',()=>{if(drag?.handle===handle)finish(false)});
+          handle.addEventListener('lostpointercapture',()=>{if(drag?.handle===handle)finish(false)});
+          handle.addEventListener('keydown',event=>{
+            if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key))return;
+            event.preventDefault();event.stopPropagation();
+            resize(image,image.getBoundingClientRect().width+(['ArrowRight','ArrowUp'].includes(event.key)?1:-1)*(event.shiftKey?10:1));persist(image);
+          });
+        }
+      }
+      document.addEventListener('keydown',event=>{if(event.key==='Escape' && drag){event.preventDefault();finish(false)}});
+      window.addEventListener('blur',()=>finish(false));
+      const article=document.querySelector('article');
+      if(article)new MutationObserver(()=>{if(drag && !drag.image.isConnected)finish(false);install()}).observe(article,{childList:true,subtree:true});
+      install();
+    })();
+    """#
 }
