@@ -1,24 +1,31 @@
-# Windows 首版验证记录
+# Windows 1.3.1 验收记录
 
-验证日期：2026-09-30。环境：Linux，Node.js 24.19.0、Electron 38.8.6；Electron 窗口通过 Xvfb 显示。`docs/windows-*.png` 是此次 Electron 窗口截图，不是 Windows 实机截图。
+日期：2026-10-01。平台：Windows 11 Pro x64，系统 10.0.26300，Node.js 22.22.1，Electron 44.5.1。同步基线为 macOS `3d85eed`（1.3.0 build 13）。本目录截图来自 Windows Electron 实机。
 
 ## 通过
 
-- `npm test`：9 项通过。中文与 BOM 文件、外部修改及删除冲突、确认覆盖、文件扫描范围与符号链接、序列化草稿持久化、历史去重与数量限制、SSE 分段 Unicode 与上下文、JSON 与 HTTP 错误、拒绝重定向、取消生成、自定义命令及 Codex JSON 协议。
-- `npm run build`：Vite 生产构建通过，渲染库、公式字体与图表模块进入本地资源。
-- `DISPLAY=:99 npm run test:ui`：3 项通过。Markdown/KaTeX/Mermaid、HTML 清理、主题/模式/草稿重启恢复、真实文件保存与冲突取消/覆盖、快照恢复、HTML 内嵌图表/字体、PDF 输出、选区发送假 CLI、多轮记录持久化与重开。
-- `node --check`：主进程、preload、智能体模块语法检查通过；`git diff --check` 通过。
-- Windows x64 便携 `.exe` 交叉构建通过。核对 `app.asar` 内主进程、智能体和 preload 文件与源码一致；本地公式资源存在；没有将开发依赖的 `node_modules` 重复打入应用。
+- `npm test`：14 项通过。文件保存与外部/删除冲突、文件扫描限制、草稿与快照、流式 Unicode、HTTP 错误与取消、自定义命令、原生输出解析、Smartwork/WorkBuddy、Codex JSON-RPC 原会话续聊、线程锁、工作区搜索/链接/监听、临时占用重试与永久失败保留原文件。
+- `npm run build`：生产构建通过，Markdown、公式字体和 Mermaid 使用本地资源。
+- `npm run test:ui`：10 项通过（20.4 秒）。编辑/阅读、清理 HTML、模式/主题/草稿重启恢复、真实文件冲突取消/覆盖、版本恢复、HTML/PDF 导出、引用对话、图表文字/缩放/外框调整、工作区搜索/相对链接/冲突横幅、排版、Smartwork IPC 调用、Codex 原会话选择、Windows 凭据加密。
+- 保存/冲突用例额外连续重复 5 次通过。曾发现保存完成之前继续编辑的测试时序问题，增加界面保存状态等待；同时补强 Windows 原子替换的有限重试与数据保留测试。
+- 最终 x64 NSIS 安装版与便携版在 Windows 上构建成功。打包的 8 个 Electron 主进程模块与源文件逐字节一致；`app.asar` 版本为 1.3.1；PE 产品版本 1.3.1.0。
+- 最终便携 `.exe` 用隔离应用数据目录启动；原生窗口检查确认纸张布局、阅读模式与工具，CDP 核对 Mermaid 节点文字、离线公式和阅读工具正常。
+- 本机 `codex-cli 0.144.0` 的 `model/list` 返回 4 个模型，验证 PATH 中 npm shim 查找与真实 app-server 握手；未发送真实模型问题。
+- `npm audit`：0 个已知漏洞。`git diff --check` 通过。
 
-便携版构建命令（关闭签名，使用 ZIP 压缩）：
+## 发布产物
 
-```bash
-npx electron-builder --win portable --x64 \
-  -c.win.signExecutable=false -c.portable.useZip=true
-```
+| 文件 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| Mirror-1.3.1-windows-x64-portable.exe | 114650598 | 91e844ff2b0a480212912c861d00697d41654e79a4f9d81bf6212bc89c5fa07b |
+| Mirror-1.3.1-windows-x64-setup.exe | 114942640 | 455ca7853c5b36a62438b65cb0506e646193eee9fe3a0a3e402f8c4dfe5d65d8 |
 
-## 未完成的目标平台验收
+Authenticode 状态为 NotSigned；没有使用签名证书。Release 同时提供 `SHA256SUMS.txt`。
 
-NSIS 安装版在本 Linux 环境构建失败：最初缺少系统 Wine，随后下载的 electron-builder Wine 11 工具包无法加载 `ntdll.dll`，所以无法生成卸载器。失败的安装程序中间文件已删除。`npm run dist:win` 与 Windows GitHub Actions 配置已提供，需在 Windows 上执行后验收安装/卸载和文件关联。
+## 范围与未验收项
 
-便携版尚未在 Windows 实机启动；Windows DPAPI、系统缩放、ARM64、真实 Codex/Claude 登录及模型服务未在本环境验证。所有智能体测试使用假进程或本机 HTTP fixture，不调用真实模型。产物未签名，不是正式发布版本。
+生成测试使用本地 HTTP 与 CLI fixture，原会话续聊在协议层验证，只读查询使用本机 Codex；没有让真实智能体修改文档或生成收费回复。WorkBuddy 与其他原生 CLI 的真实登录/模型兼容性、安装/卸载、文件关联、ARM64、不同 DPI 和 Windows 10 未单独实测。
+
+Windows 文件浏览限 Markdown/纯文本，尚未包含 macOS Quick Look 的图片/PDF/二进制预览、源码行号边栏、Markdown 清理助手和完整多行脚注。桌面草稿预填改为复制引用，字体使用 Windows 本机字体。原 Codex 会话续聊需先退出 Codex 桌面，停止、完成或异常后刷新历史核对。
+
+本次发布仅更新 Windows 1.3.1，macOS 安装包继续使用 v1.3.0。

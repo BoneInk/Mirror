@@ -4,11 +4,38 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const os = require("node:os");
 const {
+  atomicWrite,
   readDocument,
   saveDocument,
   listMarkdown,
   Store,
 } = require("../electron/store.cjs");
+
+test("atomic replacement retries transient locks and retains the original on permanent failure", async (t) => {
+  const root = await fixture(t),
+    file = path.join(root, "locked.md");
+  await fs.writeFile(file, "original");
+  const rename = fs.rename;
+  let attempts = 0;
+  t.after(() => {
+    fs.rename = rename;
+  });
+  fs.rename = async (...args) => {
+    if (++attempts < 3)
+      throw Object.assign(Error("busy fixture"), { code: "EBUSY" });
+    return rename(...args);
+  };
+  await atomicWrite(file, "replacement");
+  assert.equal(await fs.readFile(file, "utf8"), "replacement");
+  assert.equal(attempts, 3);
+  fs.rename = async () => {
+    throw Object.assign(Error("denied fixture"), { code: "EACCES" });
+  };
+  await assert.rejects(atomicWrite(file, "must not replace"), /denied/);
+  assert.equal(await fs.readFile(file, "utf8"), "replacement");
+  assert.deepEqual(await fs.readdir(root), ["locked.md"]);
+  fs.rename = rename;
+});
 async function fixture(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "mirror-test-"));
   t.after(() => fs.rm(root, { recursive: true }));

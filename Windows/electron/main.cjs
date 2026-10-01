@@ -8,6 +8,7 @@ const {
   protocol,
   net,
   Menu,
+  clipboard,
 } = require("electron");
 const fs = require("node:fs/promises");
 const path = require("node:path");
@@ -20,10 +21,20 @@ const {
   atomicWrite,
 } = require("./store.cjs");
 const { runTurn, endpoint } = require("./agents.cjs");
+const {
+  searchWorkspace,
+  resolveDocumentLink,
+  DocumentWatcher,
+} = require("./workspace.cjs");
 protocol.registerSchemesAsPrivileged([
   {
     scheme: "mirror-asset",
-    privileges: { standard: true, secure: true, supportFetchAPI: true },
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+    },
   },
 ]);
 let win,
@@ -31,42 +42,28 @@ let win,
   closing = false;
 const allowed = new Set();
 const jobs = new Map();
+const watcher = new DocumentWatcher(
+  (document) => {
+    if (win && !win.isDestroyed())
+      win.webContents.send("document-changed", document);
+  },
+  async (root) => {
+    try {
+      const files = await listMarkdown(root);
+      files.forEach((file) => allowed.add(path.resolve(file.path)));
+      if (win && !win.isDestroyed())
+        win.webContents.send("folder-changed", { root, files });
+    } catch {
+      /* Keep the last workspace visible if the directory disappears. */
+    }
+  },
+);
 const filters = [
   { name: "Markdown", extensions: ["md", "markdown", "mdown", "txt"] },
 ];
-const presets = [
-  {
-    id: "codex",
-    name: "Codex",
-    kind: "codex",
-    model: "",
-    executable: "",
-    effort: "",
-  },
-  {
-    id: "claude",
-    name: "Claude Code",
-    kind: "claude",
-    model: "",
-    executable: "",
-  },
-  {
-    id: "http",
-    name: "兼容 HTTP 服务",
-    kind: "http",
-    endpoint: "http://127.0.0.1:18789/v1",
-    model: "",
-    executable: "",
-  },
-  {
-    id: "custom",
-    name: "自定义命令",
-    kind: "custom",
-    executable: "",
-    arguments: "[]",
-    model: "",
-  },
-];
+const { presets, connection, effortOptions } = require("./profiles.cjs");
+const { listModels, discoverProfiles } = require("./services.cjs");
+const { queryCodex, threadMessages, continueThread } = require("./codex.cjs");
 function handle(name, fn) {
   ipcMain.handle(name, async (event, ...args) => {
     if (event.sender !== win?.webContents) throw new Error("不受信任的窗口。");
@@ -88,13 +85,34 @@ async function open(file) {
   return document;
 }
 async function settings() {
-  return store.read("settings", {
+  const defaults = {
     theme: "light",
     mode: "split",
     fontSize: 16,
     selectedAgent: "codex",
     profiles: presets,
-  });
+    previewSize: 17,
+    lineHeight: 1.9,
+    contentWidth: 720,
+    readingFont: "Georgia, 'SimSun', serif",
+    scrollSync: "smart",
+    tabWidth: 2,
+    wordWrap: true,
+  };
+  const saved = await store.read("settings", defaults);
+  const profiles = saved.profiles || [];
+  return {
+    ...defaults,
+    ...saved,
+    profilesVersion: 1,
+    profiles:
+      saved.profilesVersion === 1
+        ? profiles
+        : [
+            ...profiles,
+            ...presets.filter((p) => !profiles.some((old) => old.id === p.id)),
+          ],
+  };
 }
 async function credential(id) {
   const secrets = await store.read("credentials", {});
@@ -217,6 +235,41 @@ function registerIPC() {
     files.forEach((file) => allowed.add(path.resolve(file.path)));
     return files;
   });
+  handle("workspace-search", async (query) => {
+    const session = await store.read("session", { tabs: [] });
+    return session.folder?.root
+      ? searchWorkspace(session.folder.root, query)
+      : [];
+  });
+  handle("link-open", async (document, href) => {
+    const source = permitted(document);
+    const session = await store.read("session", { tabs: [] });
+    const { file, fragment } = await resolveDocumentLink(
+      source,
+      href,
+      session.folder?.root,
+    );
+    return { ...(await open(file)), fragment };
+  });
+  handle("drop-open", async (files) => {
+    if (!Array.isArray(files) || files.length > 30)
+      throw Error("一次最多拖入 30 个文件。");
+    for (const file of files) {
+      try {
+        if ((await fs.stat(file)).isDirectory()) {
+          const listing = await listMarkdown(file);
+          listing.forEach((entry) => allowed.add(path.resolve(entry.path)));
+          win.webContents.send("folder-opened", {
+            root: file,
+            name: path.basename(file),
+            files: listing,
+          });
+        } else win.webContents.send("file-opened", await open(file));
+      } catch (error) {
+        win.webContents.send("document-error", error.message);
+      }
+    }
+  });
   handle("save", async (doc, saveAs) => {
     let file = doc.path && permitted(doc.path);
     if (!file || saveAs) {
@@ -253,22 +306,44 @@ function registerIPC() {
     );
     return result;
   });
-  handle("session-save", (session) => store.write("session", session));
+  handle("session-save", async (session) => {
+    await store.write("session", session);
+    watcher.update(
+      session.tabs.map((tab) => tab.path),
+      session.folder?.root,
+    );
+  });
   handle("settings-save", async (config) => {
     if (
-      !["light", "dark", "system"].includes(config.theme) ||
+      ![
+        "light",
+        "dark",
+        "system",
+        "sepia",
+        "midnight",
+        "solarized",
+        "nord",
+        "dracula",
+        "forest",
+        "rose",
+        ...(config.customThemes || []).map((theme) => theme.id),
+      ].includes(config.theme) ||
       !["edit", "split", "read"].includes(config.mode)
     )
       throw new Error("设置格式无效。");
     if (!Array.isArray(config.profiles) || config.profiles.length > 30)
       throw new Error("智能体配置无效。");
     for (const profile of config.profiles) {
-      if (!["codex", "claude", "http", "custom"].includes(profile.kind))
+      if (!presets.some((p) => p.kind === profile.kind))
         throw new Error("不支持的智能体类型。");
-      if (profile.kind === "http") endpoint(profile.endpoint);
+      if (
+        ["http", "smartwork", "workbuddy"].includes(connection(profile)) &&
+        profile.endpoint
+      )
+        endpoint(profile.endpoint);
       if (
         profile.effort &&
-        !["minimal", "low", "medium", "high", "xhigh"].includes(profile.effort)
+        !effortOptions(profile.kind).includes(profile.effort)
       )
         throw new Error("无效的思考深度。");
       delete profile.token;
@@ -292,55 +367,98 @@ function registerIPC() {
   handle("conversations-save", (conversations) =>
     store.write("conversations", conversations),
   );
-  handle("agent-start", async ({ id, profile, reference, messages }) => {
-    if (jobs.has(id)) throw new Error("此对话正在生成回复。");
-    if (
-      !Array.isArray(messages) ||
-      messages.some(
-        (m) =>
-          !["user", "assistant"].includes(m.role) ||
-          typeof m.content !== "string",
+  handle(
+    "agent-start",
+    async ({ id, profile, reference, messages, threadId }) => {
+      if (jobs.has(id)) throw new Error("此对话正在生成回复。");
+      if (
+        !Array.isArray(messages) ||
+        messages.some(
+          (m) =>
+            !["user", "assistant"].includes(m.role) ||
+            typeof m.content !== "string",
+        )
       )
-    )
-      throw new Error("对话格式无效。");
-    const config = await settings();
-    const configured = config.profiles.find((p) => p.id === profile.id);
-    if (
-      !configured ||
-      !["codex", "claude", "http", "custom"].includes(profile.kind)
-    )
-      throw new Error("请先配置智能体。");
-    const controller = new AbortController();
-    jobs.set(id, controller);
-    const send = (event) => {
-      if (!win.isDestroyed())
-        win.webContents.send("agent-event", { id, ...event });
-    };
-    // Detach the turn from IPC so the UI can issue cancellation immediately.
-    Promise.resolve().then(async () => {
-      const timer = setTimeout(() => controller.abort(), 5 * 60_000);
-      try {
-        const token =
-          profile.kind === "http" ? await credential(profile.id) : "";
-        const content = await runTurn(
-          profile,
-          token,
-          reference,
-          messages,
-          (delta) => send({ type: "delta", delta }),
-          controller.signal,
-        );
-        send({ type: "done", content });
-      } catch (error) {
-        send({
-          type: "error",
-          error: controller.signal.aborted ? "已停止生成。" : error.message,
-        });
-      } finally {
-        clearTimeout(timer);
-        jobs.delete(id);
-      }
+        throw new Error("对话格式无效。");
+      const config = await settings();
+      const configured = config.profiles.find((p) => p.id === profile.id);
+      if (!configured || !presets.some((p) => p.kind === profile.kind))
+        throw new Error("请先配置智能体。");
+      const controller = new AbortController();
+      jobs.set(id, controller);
+      const send = (event) => {
+        if (!win.isDestroyed())
+          win.webContents.send("agent-event", { id, ...event });
+      };
+      // Detach the turn from IPC so the UI can issue cancellation immediately.
+      Promise.resolve().then(async () => {
+        const timer = setTimeout(() => controller.abort(), 5 * 60_000);
+        try {
+          const token = ["http", "smartwork", "workbuddy"].includes(
+            connection(profile),
+          )
+            ? await credential(profile.id)
+            : "";
+          const content = threadId
+            ? await continueThread({
+                profile,
+                threadId,
+                reference,
+                messages,
+                root: store.root,
+                onDelta: (delta) => send({ type: "delta", delta }),
+                signal: controller.signal,
+              })
+            : await runTurn(
+                profile,
+                token,
+                reference,
+                messages,
+                (delta) => send({ type: "delta", delta }),
+                controller.signal,
+              );
+          send({ type: "done", content });
+        } catch (error) {
+          send({
+            type: "error",
+            error: controller.signal.aborted ? "已停止生成。" : error.message,
+          });
+        } finally {
+          clearTimeout(timer);
+          jobs.delete(id);
+        }
+      });
+      return true;
+    },
+  );
+  handle("agent-models", async (profile) =>
+    listModels(profile, await credential(profile.id)),
+  );
+  handle("agent-discover", async () =>
+    discoverProfiles((await settings()).profiles),
+  );
+  handle("codex-threads", async (profile, cursor) =>
+    queryCodex(profile, "thread/list", {
+      limit: 40,
+      sortKey: "updated_at",
+      ...(cursor ? { cursor } : {}),
+      sourceKinds: ["cli", "vscode", "appServer", "exec"],
+    }),
+  );
+  handle("codex-history", async (profile, threadId) => {
+    if (typeof threadId !== "string" || threadId.length > 200)
+      throw Error("会话标识无效。");
+    const result = await queryCodex(profile, "thread/read", {
+      threadId,
+      includeTurns: true,
     });
+    return {
+      thread: result.thread,
+      messages: threadMessages(result.thread || {}),
+    };
+  });
+  handle("codex-copy", (reference) => {
+    clipboard.writeText("引用资料：\n" + JSON.stringify(reference));
     return true;
   });
   handle("agent-stop", (id) => {
@@ -477,5 +595,8 @@ else {
     registerIPC();
     createWindow();
   });
-  app.on("window-all-closed", () => app.quit());
+  app.on("window-all-closed", () => {
+    watcher.close();
+    app.quit();
+  });
 }

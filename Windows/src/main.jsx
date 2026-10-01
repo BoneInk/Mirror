@@ -41,8 +41,19 @@ import {
   Focus,
   AlignLeft,
   ArrowLeft,
+  MoreHorizontal,
+  Type,
+  MoveHorizontal,
+  Contrast,
+  Share,
 } from "lucide-react";
 import { renderMarkdown, renderDiagrams, headings } from "./markdown";
+import { disposeDiagrams } from "./diagrams";
+import { version } from "../package.json";
+import { syncSemanticScroll, editorLines } from "./scroll";
+import { themes, selectedTheme, themeStyle } from "./themes";
+import { Preferences, Typography, ThreadPicker } from "./preferences";
+import hljs from "highlight.js/lib/common";
 import "./style.css";
 const api = (name, ...args) => window.mirror.call(name, ...args);
 const welcome = `# 让想法，在纸上展开\n\n一个安静的空间，容纳尚未成形的思考。\nMirror 把写作、阅读与对话放在同一张桌面上。\n\n## 从一张纸开始\n\n清晰的界面来自秩序：适度的留白、自然的层级，以及随手可用的工具。\n\n**把注意力留给内容**，让工具轻轻退到文字之后。\n\n> 写作不是把复杂的想法藏起来，而是给它一个可以展开的形状。\n\n### 今天想做的事\n\n- [x] 收集灵感，写下最初的几句话\n- [ ] 整理成一篇清晰的文章\n- [ ] 圈选一段内容，与 AI 讨论\n\n## 让结构自然浮现\n\n| 表达 | 方式 | 节奏 |\n| --- | --- | --- |\n| 草稿 | 自由记录 | 轻快 |\n| 阅读 | 梳理思路 | 从容 |\n| 对话 | 选中文字提问 | 深入 |\n\n### 从想法到文章\n\n\`\`\`mermaid\nflowchart LR\n  A[收集灵感] --> B[整理草稿]\n  B --> C[阅读与对话]\n  C --> D[分享文章]\n\`\`\`\n\n公式也可以离线显示：$E = mc^2$。\n\n---\n\n选中编辑器或预览中的文字，点击「提问」。在设置中连接你熟悉的智能体后，就能开始对话。\n`;
@@ -64,12 +75,44 @@ function Button({ icon: Icon, children, className = "", ...props }) {
     </button>
   );
 }
-function Preview({ text, path, dark, innerRef, onMouseUp, onScroll, onLink }) {
+function Preview({
+  text,
+  path,
+  dark,
+  innerRef,
+  onMouseUp,
+  onScroll,
+  onLink,
+  memories = [],
+  onMemory,
+}) {
   const ref = useRef();
   const html = React.useMemo(() => renderMarkdown(text, path), [text, path]);
   useEffect(() => {
-    renderDiagrams(ref.current, dark);
+    const article = ref.current;
+    renderDiagrams(article, dark, true);
+    return () => disposeDiagrams(article);
   }, [html, dark]);
+  useEffect(() => {
+    const article = ref.current;
+    article.querySelectorAll(".memory-marker").forEach((node) => node.remove());
+    for (const memory of memories) {
+      const quote = memory.reference.text.trim().replace(/\s+/g, " ");
+      const target = [...article.children].find(
+        (node) =>
+          quote && node.textContent.replace(/\s+/g, " ").includes(quote),
+      );
+      if (!target) continue;
+      const button = document.createElement("button");
+      button.className = "memory-marker";
+      button.textContent = "◌";
+      button.title = "打开此处对话";
+      button.setAttribute("aria-label", "打开此处对话");
+      button.onclick = () => onMemory(memory.id);
+      target.style.position = "relative";
+      target.appendChild(button);
+    }
+  }, [html, memories, onMemory]);
   return (
     <div
       className="preview-scroll"
@@ -143,19 +186,44 @@ function App() {
   );
   const [query, setQuery] = useState("");
   const [confirmClose, setConfirmClose] = useState(null);
+  const [searchScope, setSearchScope] = useState("document");
+  const [workspaceResults, setWorkspaceResults] = useState([]);
+  const [searchBusy, setSearchBusy] = useState(false);
+  const [navigation, setNavigation] = useState(null);
+  const [readingProgress, setReadingProgress] = useState(0);
+  const syntax = useRef();
+  const [chatOptions, setChatOptions] = useState(false);
+  const [chatModels, setChatModels] = useState([]);
+  const codexProfile = config.profiles.find(
+    (p) => p.kind === "codex" && (!p.connection || p.connection === "native"),
+  );
   const editor = useRef();
   const preview = useRef();
   const current = useRef();
   const scrollSource = useRef(null);
   const pendingDraft = useRef();
   const doc = tabs.find((tab) => tab.id === active) || tabs[0];
-  const dark =
-    config.theme === "dark" || (config.theme === "system" && systemDark);
+  const theme = selectedTheme(config, systemDark);
+  const dark = theme.dark;
   const conversation = conversations.find((value) => value.id === chatID);
   const outline = headings(doc?.text || "");
   const dirty = doc && doc.text !== doc.savedText;
   current.current = { tabs, active, folder, config, conversations, ready };
   const toast = useCallback((text) => setNotice(text), []);
+  useEffect(() => {
+    const area = editor.current,
+      layer = syntax.current;
+    if (!area || !layer) return;
+    const align = () => {
+      layer.style.width = `${area.clientWidth}px`;
+      layer.scrollTop = area.scrollTop;
+      layer.scrollLeft = area.scrollLeft;
+    };
+    align();
+    const observer = new ResizeObserver(align);
+    observer.observe(area);
+    return () => observer.disconnect();
+  }, [doc?.id, config.mode, config.fontSize, ready]);
   const safely = useCallback(
     async (task) => {
       try {
@@ -202,6 +270,7 @@ function App() {
         data.conversations.map((c) => ({
           ...c,
           busy: false,
+          needsRefresh: !!c.threadId && (c.needsRefresh || c.busy),
           error: c.busy ? "上次生成已中断，可以继续提问。" : c.error,
         })),
       );
@@ -224,6 +293,39 @@ function App() {
           await api("quit-ready", session());
         });
     });
+    const offDocument = window.mirror.on("document-changed", (fresh) => {
+      setTabs((values) =>
+        values.map((tab) => {
+          if (
+            tab.path !== fresh.path ||
+            (tab.stamp === fresh.stamp && !fresh.missing)
+          )
+            return tab;
+          if (!fresh.missing && fresh.text === tab.text)
+            return {
+              ...tab,
+              stamp: fresh.stamp,
+              savedText: fresh.text,
+              external: null,
+            };
+          if (!fresh.missing && tab.text === tab.savedText)
+            return { ...tab, ...fresh, savedText: fresh.text, external: null };
+          return { ...tab, external: fresh };
+        }),
+      );
+    });
+    const offFolder = window.mirror.on("folder-changed", (value) =>
+      setFolder((previous) =>
+        previous?.root === value.root
+          ? { ...previous, files: value.files }
+          : previous,
+      ),
+    );
+    const offFolderOpened = window.mirror.on("folder-opened", (value) => {
+      setFolder(value);
+      setSidebar("files");
+    });
+    const offError = window.mirror.on("document-error", toast);
     const offAgent = window.mirror.on("agent-event", (event) =>
       setConversations((values) =>
         values.map((c) => {
@@ -238,6 +340,7 @@ function App() {
             messages,
             busy: event.type === "delta",
             error: event.type === "error" ? event.error : null,
+            needsRefresh: !!c.threadId && event.type !== "delta",
           };
         }),
       ),
@@ -248,6 +351,10 @@ function App() {
       offOpen();
       offClose();
       offAgent();
+      offDocument();
+      offFolder();
+      offFolderOpened();
+      offError();
     };
   }, []);
   useEffect(() => {
@@ -264,6 +371,53 @@ function App() {
     );
     return () => clearTimeout(timer);
   }, [tabs, active, folder, ready]);
+  useEffect(() => {
+    if (
+      sidebar !== "search" ||
+      searchScope !== "workspace" ||
+      !folder ||
+      !filter.trim()
+    ) {
+      setWorkspaceResults([]);
+      setSearchBusy(false);
+      return;
+    }
+    let live = true;
+    setSearchBusy(true);
+    const timer = setTimeout(
+      () =>
+        safely(async () => {
+          try {
+            const matches = await api("workspace-search", filter);
+            if (live) setWorkspaceResults(matches);
+          } finally {
+            if (live) setSearchBusy(false);
+          }
+        }),
+      500,
+    );
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [filter, sidebar, searchScope, folder?.root]);
+  useEffect(() => {
+    if (!navigation || navigation.path !== doc?.path) return;
+    const timer = setTimeout(() => {
+      if (navigation.line != null) jump({ line: navigation.line });
+      else if (navigation.fragment) {
+        const node = preview.current?.querySelector(
+          `[id="${CSS.escape(navigation.fragment)}"]`,
+        );
+        node?.scrollIntoView({ block: "start" });
+      } else {
+        if (editor.current) editor.current.scrollTop = 0;
+        if (preview.current) preview.current.scrollTop = 0;
+      }
+      setNavigation(null);
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [navigation, doc?.id, config.mode]);
   useEffect(() => {
     if (ready) safely(() => api("settings-save", config));
   }, [config, ready]);
@@ -308,7 +462,7 @@ function App() {
       setTabs((values) =>
         values.map((tab) =>
           tab.id === target.id
-            ? { ...tab, ...result, savedText: target.text }
+            ? { ...tab, ...result, savedText: target.text, external: null }
             : tab,
         ),
       );
@@ -406,7 +560,13 @@ function App() {
   };
   const send = () =>
     safely(async () => {
-      if (!question.trim() || !conversation || conversation.busy) return;
+      if (
+        !question.trim() ||
+        !conversation ||
+        conversation.busy ||
+        conversation.needsRefresh
+      )
+        return;
       const messages = [
         ...conversation.messages.filter((m) => m.content),
         { role: "user", content: question.trim() },
@@ -430,6 +590,7 @@ function App() {
           profile: conversation.profile,
           reference: conversation.reference,
           messages,
+          threadId: conversation.threadId,
         });
       } catch (error) {
         setConversations((values) =>
@@ -466,9 +627,7 @@ function App() {
     )
       return;
     scrollSource.current = name;
-    const ratio =
-      source.scrollTop / Math.max(1, source.scrollHeight - source.clientHeight);
-    target.scrollTop = ratio * (target.scrollHeight - target.clientHeight);
+    syncSemanticScroll(source, target, name, config.scrollSync || "smart");
     setTimeout(() => {
       scrollSource.current = null;
     }, 60);
@@ -480,27 +639,38 @@ function App() {
         (heading.line ? 1 : 0);
       editor.current.focus();
       editor.current.setSelectionRange(offset, offset);
-      editor.current.scrollTop = heading.line * config.fontSize * 1.9;
+      editor.current.scrollTop = editorLines(editor.current)[heading.line] || 0;
     }
-    const nodes = preview.current?.querySelectorAll("h1,h2,h3,h4,h5,h6");
-    const index = outline.indexOf(heading);
-    nodes?.[index]?.scrollIntoView({ behavior: "smooth", block: "start" });
-    if (index < 0 && preview.current) {
-      preview.current.scrollTop =
-        (heading.line / Math.max(1, doc.text.split("\n").length - 1)) *
-        (preview.current.scrollHeight - preview.current.clientHeight);
-    }
+    const nodes = [
+      ...(preview.current?.querySelectorAll("[data-source-line]") || []),
+    ];
+    const target =
+      nodes.find((node) => +node.dataset.sourceLine === heading.line) ||
+      nodes.filter((node) => +node.dataset.sourceLine <= heading.line).at(-1);
+    target?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   const handleLink = (value) => {
     if (value?.startsWith("#")) {
-      const target = decodeURIComponent(value.slice(1))
-        .replace(/-/g, " ")
-        .toLowerCase();
+      const id = value.slice(1);
+      const node = [...(preview.current?.querySelectorAll("[id]") || [])].find(
+        (node) => node.id === id || node.id === decodeURIComponent(id),
+      );
+      if (node) {
+        node.scrollIntoView({ block: "start", behavior: "smooth" });
+        return;
+      }
+      const target = decodeURIComponent(id).replace(/-/g, " ").toLowerCase();
       const h = outline.find((h) => h.text.toLowerCase() === target);
       if (h) jump(h);
     } else if (/^https?:/i.test(value || ""))
       safely(() => api("external", value));
-    else toast("本地链接请通过文件侧栏或「打开文件」打开。");
+    else if (doc.path)
+      safely(async () => {
+        const file = await api("link-open", doc.path, value);
+        addOpened(file);
+        setNavigation({ path: file.path, fragment: file.fragment });
+      });
+    else toast("请先保存当前文档，再打开相对链接。");
   };
   useEffect(() => {
     const key = (event) => {
@@ -563,13 +733,20 @@ function App() {
   return (
     <div
       className={`app ${dark ? "dark" : ""} ${focus ? "focus-mode" : ""}`}
-      style={{ "--editor-size": `${config.fontSize}px` }}
+      style={{
+        ...themeStyle(theme),
+        "--editor-size": `${config.fontSize}px`,
+        "--preview-size": `${config.previewSize || 17}px`,
+        "--preview-line-height": config.lineHeight || 1.88,
+        "--content-width": `${config.contentWidth || 720}px`,
+        "--preview-font":
+          config.readingFont || 'Georgia, "Noto Serif CJK SC", SimSun, serif',
+      }}
     >
       <header className="topbar">
         <div className="brand">
           <img src="./icon.png" alt="" />
           <strong>Mirror</strong>
-          <span className="platform">WINDOWS</span>
         </div>
         <div className="title-document">
           <strong>
@@ -597,6 +774,12 @@ function App() {
             ))}
           </div>
           <Button
+            icon={Search}
+            title="搜索 (Ctrl F)"
+            aria-label="搜索文档"
+            onClick={() => setSidebar("search")}
+          />
+          <Button
             icon={Save}
             title="保存 (Ctrl S)"
             aria-label="保存"
@@ -616,6 +799,15 @@ function App() {
             title="导出"
             aria-label="导出"
             onClick={() => setDialog("export")}
+          />
+          <Button
+            icon={MoreHorizontal}
+            aria-label="更多操作"
+            title="更多操作"
+            onClick={() => {
+              setQuery("");
+              setDialog("commands");
+            }}
           />
         </div>
         <div className="window-controls">
@@ -705,7 +897,9 @@ function App() {
                       ? "CONTENTS"
                       : sidebar === "chats"
                         ? "CONVERSATIONS"
-                        : "FIND IN DOCUMENT"}
+                        : searchScope === "workspace"
+                          ? "SEARCH WORKSPACE"
+                          : "FIND IN DOCUMENT"}
                 </small>
                 <h3>
                   {sidebar === "files"
@@ -714,7 +908,9 @@ function App() {
                       ? "文章大纲"
                       : sidebar === "chats"
                         ? "选区对话"
-                        : "文内查找"}
+                        : searchScope === "workspace"
+                          ? "工作区搜索"
+                          : "文内查找"}
                 </h3>
               </div>
               <Button
@@ -840,10 +1036,32 @@ function App() {
                 ) : (
                   <p className="empty">用 # 标题组织文章，结构会在这里浮现。</p>
                 )}
+                {config.mode === "read" && (
+                  <div className="reading-progress">
+                    <span>阅读进度</span>
+                    <strong>{readingProgress}%</strong>
+                    <progress max="100" value={readingProgress} />
+                  </div>
+                )}
               </div>
             )}
             {sidebar === "search" && (
               <>
+                <div className="search-scope">
+                  <button
+                    className={searchScope === "document" ? "active" : ""}
+                    onClick={() => setSearchScope("document")}
+                  >
+                    当前文档
+                  </button>
+                  <button
+                    disabled={!folder}
+                    className={searchScope === "workspace" ? "active" : ""}
+                    onClick={() => setSearchScope("workspace")}
+                  >
+                    整个工作区
+                  </button>
+                </div>
                 <div className="filter">
                   <Search size={14} />
                   <input
@@ -854,7 +1072,29 @@ function App() {
                   />
                 </div>
                 <div className="search-results">
-                  {filter &&
+                  {searchBusy && <p className="empty">正在搜索…</p>}
+                  {searchScope === "workspace" &&
+                    workspaceResults.map((match, index) => (
+                      <button
+                        key={index}
+                        onClick={() =>
+                          safely(async () => {
+                            addOpened(await api("open", match.path));
+                            setNavigation({
+                              path: match.path,
+                              line: match.line,
+                            });
+                          })
+                        }
+                      >
+                        <small>
+                          {match.relative} · 第 {match.line + 1} 行
+                        </small>
+                        <span>{match.text}</span>
+                      </button>
+                    ))}
+                  {searchScope === "document" &&
+                    filter &&
                     doc.text.split("\n").map(
                       (line, i) =>
                         line.toLowerCase().includes(filter.toLowerCase()) && (
@@ -916,6 +1156,30 @@ function App() {
           </aside>
         )}
         <main className={`workspace mode-${config.mode}`}>
+          {doc.external && (
+            <div className="conflict-banner" role="alert">
+              <AlertCircle size={16} />
+              <span>
+                {doc.external.missing
+                  ? "磁盘文件已被删除。编辑内容仍保留。"
+                  : "磁盘文件已在其他程序中修改。编辑内容仍保留。"}
+              </span>
+              {!doc.external.missing && (
+                <Button
+                  onClick={() =>
+                    updateDoc({
+                      ...doc.external,
+                      savedText: doc.external.text,
+                      external: null,
+                    })
+                  }
+                >
+                  重新载入磁盘版本
+                </Button>
+              )}
+              <Button onClick={() => save(true)}>另存为</Button>
+            </div>
+          )}
           {config.mode !== "read" && (
             <section className="editor-pane">
               <div className="pane-title">
@@ -947,27 +1211,81 @@ function App() {
                 </div>
                 <span className="source-label">Source</span>
               </div>
-              <textarea
-                key={doc.id}
-                ref={editor}
-                aria-label="Markdown 编辑器"
-                spellCheck="false"
-                value={doc.text}
-                onChange={(e) => updateDoc({ text: e.target.value })}
-                onMouseUp={() => selectedText("editor")}
-                onKeyUp={(e) => {
-                  if (e.shiftKey) selectedText("editor");
+              <div
+                className="source-body"
+                style={{
+                  "--wrap": config.wordWrap === false ? "pre" : "pre-wrap",
                 }}
-                onScroll={() =>
-                  syncScroll(editor.current, preview.current, "editor")
-                }
-                onKeyDown={(e) => {
-                  if (e.key === "Tab") {
-                    e.preventDefault();
-                    insert("  ");
-                  }
-                }}
-              />
+              >
+                <pre className="syntax-layer" ref={syntax} aria-hidden="true">
+                  <code
+                    dangerouslySetInnerHTML={{
+                      __html:
+                        doc.text.length < 200000
+                          ? hljs.highlight(doc.text + "\n", {
+                              language: "markdown",
+                            }).value
+                          : doc.text
+                              .replace(/&/g, "&amp;")
+                              .replace(/</g, "&lt;") + "\n",
+                    }}
+                  />
+                </pre>
+                <textarea
+                  key={doc.id}
+                  ref={editor}
+                  aria-label="Markdown 编辑器"
+                  spellCheck={!!config.spellCheck}
+                  wrap={config.wordWrap === false ? "off" : "soft"}
+                  value={doc.text}
+                  onChange={(e) => {
+                    updateDoc({ text: e.target.value });
+                    if (config.typewriter) {
+                      const line =
+                        e.target.value
+                          .slice(0, e.target.selectionStart)
+                          .split("\n").length - 1;
+                      e.target.scrollTop = Math.max(
+                        0,
+                        (editorLines(e.target)[line] || 0) -
+                          e.target.clientHeight / 2,
+                      );
+                    }
+                  }}
+                  onMouseUp={() => selectedText("editor")}
+                  onKeyUp={(e) => {
+                    if (e.shiftKey) selectedText("editor");
+                  }}
+                  onScroll={() => {
+                    if (syntax.current) {
+                      syntax.current.scrollTop = editor.current.scrollTop;
+                      syntax.current.scrollLeft = editor.current.scrollLeft;
+                    }
+                    syncScroll(editor.current, preview.current, "editor");
+                  }}
+                  onKeyDown={(e) => {
+                    if (
+                      config.autoPair &&
+                      !e.ctrlKey &&
+                      !e.altKey &&
+                      !e.metaKey &&
+                      ["(", "[", "{", '"', "'"].includes(e.key)
+                    ) {
+                      e.preventDefault();
+                      insert(
+                        e.key,
+                        { "(": ")", "[": "]", "{": "}", '"': '"', "'": "'" }[
+                          e.key
+                        ],
+                      );
+                    }
+                    if (e.key === "Tab") {
+                      e.preventDefault();
+                      insert(" ".repeat(config.tabWidth || 2));
+                    }
+                  }}
+                />
+              </div>
             </section>
           )}
           {config.mode !== "edit" && (
@@ -982,12 +1300,70 @@ function App() {
                 dark={dark}
                 innerRef={preview}
                 onMouseUp={() => selectedText("preview")}
-                onScroll={() =>
-                  syncScroll(preview.current, editor.current, "preview")
-                }
+                onScroll={() => {
+                  setReadingProgress(
+                    Math.round(
+                      (100 * preview.current.scrollTop) /
+                        Math.max(
+                          1,
+                          preview.current.scrollHeight -
+                            preview.current.clientHeight,
+                        ),
+                    ),
+                  );
+                  syncScroll(preview.current, editor.current, "preview");
+                }}
                 onLink={handleLink}
+                memories={conversations.filter(
+                  (c) => c.docID === doc.id || (c.path && c.path === doc.path),
+                )}
+                onMemory={setChatID}
               />
             </section>
+          )}
+          {config.mode === "read" && (
+            <nav className="reader-tools" aria-label="阅读工具">
+              <Button
+                icon={Type}
+                title="阅读排版"
+                aria-label="阅读排版"
+                onClick={() => setDialog("typography")}
+              />
+              <Button
+                icon={MoveHorizontal}
+                title="切换阅读宽度"
+                aria-label="切换阅读宽度"
+                onClick={() =>
+                  setConfig((c) => ({
+                    ...c,
+                    contentWidth:
+                      (c.contentWidth || 720) >= 900
+                        ? 720
+                        : (c.contentWidth || 720) + 120,
+                  }))
+                }
+              />
+              <Button
+                icon={Contrast}
+                title="切换浅深色"
+                aria-label="切换浅深色"
+                onClick={() =>
+                  setConfig((c) => ({ ...c, theme: dark ? "light" : "dark" }))
+                }
+              />
+              <Button
+                icon={Focus}
+                title="专注阅读"
+                aria-label="专注阅读"
+                onClick={() => setFocus(!focus)}
+              />
+              <Button
+                icon={Share}
+                title="导出文档"
+                aria-label="阅读导出"
+                onClick={() => setDialog("export")}
+              />
+            </nav>
           )}
           {selection && (
             <div className="selection-action">
@@ -1000,6 +1376,11 @@ function App() {
               >
                 提问
               </Button>
+              {codexProfile && (
+                <Button onClick={() => setDialog("codex-threads")}>
+                  引用到 Codex 会话…
+                </Button>
+              )}
               <Button
                 icon={X}
                 aria-label="取消选区"
@@ -1021,7 +1402,12 @@ function App() {
               />
             </div>
             <div className="chat-profile">
-              <span>{conversation.profile.name}</span>
+              <button
+                onClick={() => setChatOptions(!chatOptions)}
+                title="切换智能体与模型"
+              >
+                {conversation.profile.name} <ChevronDown size={12} />
+              </button>
               <small>{conversation.profile.model || "默认模型"}</small>
               <Button
                 icon={Settings}
@@ -1082,6 +1468,197 @@ function App() {
                 </div>
               )}
             </div>
+            {chatOptions && (
+              <div className="chat-options">
+                <label>
+                  智能体
+                  <select
+                    value={conversation.profile.id}
+                    disabled={conversation.busy || !!conversation.threadId}
+                    onChange={(e) => {
+                      const profile = config.profiles.find(
+                        (p) => p.id === e.target.value,
+                      );
+                      const c = {
+                        ...conversation,
+                        id: crypto.randomUUID(),
+                        profile: { ...profile },
+                        messages: [],
+                        busy: false,
+                        error: null,
+                        date: new Date().toISOString(),
+                      };
+                      setConversations((values) => [...values, c]);
+                      setChatID(c.id);
+                      setConfig((v) => ({ ...v, selectedAgent: profile.id }));
+                    }}
+                  >
+                    {config.profiles.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  模型
+                  <input
+                    list="chat-model-options"
+                    value={conversation.profile.model || ""}
+                    disabled={conversation.busy || !!conversation.threadId}
+                    placeholder="默认模型"
+                    onChange={(e) => {
+                      const c = {
+                        ...conversation,
+                        id: crypto.randomUUID(),
+                        profile: {
+                          ...conversation.profile,
+                          model: e.target.value,
+                        },
+                        messages: [],
+                        busy: false,
+                        error: null,
+                        date: new Date().toISOString(),
+                      };
+                      if (!conversation.messages.length)
+                        setConversations((values) =>
+                          values.map((v) =>
+                            v.id === conversation.id
+                              ? { ...v, profile: c.profile }
+                              : v,
+                          ),
+                        );
+                      else {
+                        setConversations((values) => [...values, c]);
+                        setChatID(c.id);
+                      }
+                    }}
+                  />
+                </label>
+                <Button
+                  onClick={() =>
+                    safely(async () => {
+                      const models = await api(
+                        "agent-models",
+                        conversation.profile,
+                      );
+                      setChatModels(models);
+                      if (!models.length) toast("可手动填写模型 ID");
+                    })
+                  }
+                >
+                  模型列表
+                </Button>
+                <datalist id="chat-model-options">
+                  {chatModels.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </datalist>
+                <label>
+                  思考深度
+                  <select
+                    disabled={conversation.busy || !!conversation.threadId}
+                    value={conversation.profile.effort || ""}
+                    onChange={(e) => {
+                      const profile = {
+                        ...conversation.profile,
+                        effort: e.target.value,
+                      };
+                      if (!conversation.messages.length)
+                        setConversations((values) =>
+                          values.map((c) =>
+                            c.id === conversation.id ? { ...c, profile } : c,
+                          ),
+                        );
+                      else {
+                        const c = {
+                          ...conversation,
+                          id: crypto.randomUUID(),
+                          profile,
+                          messages: [],
+                          date: new Date().toISOString(),
+                          error: null,
+                        };
+                        setConversations((values) => [...values, c]);
+                        setChatID(c.id);
+                      }
+                    }}
+                  >
+                    {(conversation.profile.kind === "codex"
+                      ? [
+                          "",
+                          "none",
+                          "minimal",
+                          "low",
+                          "medium",
+                          "high",
+                          "xhigh",
+                        ]
+                      : conversation.profile.kind === "claude"
+                        ? ["", "low", "medium", "high", "xhigh", "max"]
+                        : conversation.profile.kind === "pi"
+                          ? [
+                              "",
+                              "off",
+                              "minimal",
+                              "low",
+                              "medium",
+                              "high",
+                              "xhigh",
+                              "max",
+                            ]
+                          : [""]
+                    ).map((effort) => (
+                      <option key={effort} value={effort}>
+                        {effort || "默认"}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )}
+            {conversation.threadId && (
+              <div className="thread-refresh">
+                <Button
+                  disabled={conversation.busy}
+                  onClick={() =>
+                    safely(async () => {
+                      const result = await api(
+                        "codex-history",
+                        conversation.profile,
+                        conversation.threadId,
+                      );
+                      setConversations((values) =>
+                        values.map((c) =>
+                          c.id === chatID
+                            ? {
+                                ...c,
+                                messages: result.messages,
+                                needsRefresh: false,
+                                error: null,
+                              }
+                            : c,
+                        ),
+                      );
+                    })
+                  }
+                >
+                  刷新原会话历史
+                </Button>
+                <Button
+                  onClick={() =>
+                    safely(async () => {
+                      await api("codex-copy", conversation.reference);
+                      toast("引用已复制，可粘贴到 Codex");
+                    })
+                  }
+                >
+                  复制引用到 Codex
+                </Button>
+              </div>
+            )}
             <div className="composer">
               <textarea
                 placeholder="围绕这段文字提问…"
@@ -1112,7 +1689,7 @@ function App() {
                     icon={ArrowUp}
                     className="primary"
                     aria-label="发送提问"
-                    disabled={!question.trim()}
+                    disabled={!question.trim() || conversation.needsRefresh}
                     onClick={send}
                   />
                 )}
@@ -1162,13 +1739,52 @@ function App() {
         </div>
       )}
       {dialog === "settings" && (
-        <SettingsDialog
+        <Preferences
+          Modal={Modal}
+          Button={Button}
           config={config}
           onChange={setConfig}
           safely={safely}
           toast={toast}
           onClose={() => setDialog(null)}
         />
+      )}
+      {dialog === "codex-threads" && codexProfile && selection && (
+        <ThreadPicker
+          profile={codexProfile}
+          Modal={Modal}
+          Button={Button}
+          safely={safely}
+          onClose={() => setDialog(null)}
+          onSelect={(thread, messages) => {
+            const c = {
+              id: crypto.randomUUID(),
+              docID: doc.id,
+              path: doc.path,
+              name: thread.name || thread.preview || doc.name,
+              reference: {
+                text: selection.text,
+                path: doc.path,
+                line: selection.line,
+              },
+              profile: { ...codexProfile },
+              threadId: thread.id,
+              messages,
+              date: new Date().toISOString(),
+              busy: false,
+            };
+            setConversations((values) => [...values, c]);
+            setChatID(c.id);
+            setSelection(null);
+            setDialog(null);
+            setQuestion("");
+          }}
+        />
+      )}
+      {dialog === "typography" && (
+        <Modal title="阅读排版" onClose={() => setDialog(null)}>
+          <Typography config={config} onChange={setConfig} />
+        </Modal>
       )}
       {dialog === "commands" && (
         <Modal title="你想做什么？" onClose={() => setDialog(null)}>
@@ -1323,255 +1939,6 @@ function App() {
         </Modal>
       )}
     </div>
-  );
-}
-function SettingsDialog({ config, onChange, onClose, safely, toast }) {
-  const [page, setPage] = useState("appearance");
-  const [profileID, setProfileID] = useState(config.selectedAgent);
-  const [token, setToken] = useState("");
-  const [draft, setDraft] = useState(
-    config.profiles.find((p) => p.id === profileID),
-  );
-  const patch = (value) => setDraft((d) => ({ ...d, ...value }));
-  const saveProfile = () =>
-    safely(async () => {
-      const next = {
-        ...config,
-        selectedAgent: draft.id,
-        profiles: config.profiles.map((p) => (p.id === draft.id ? draft : p)),
-      };
-      await api("settings-save", next);
-      if (token) await api("credential-save", draft.id, token);
-      onChange(next);
-      setToken("");
-      toast("智能体配置已保存");
-    });
-  return (
-    <Modal title="设置" onClose={onClose} wide>
-      <div className="settings-layout">
-        <nav>
-          <button
-            className={page === "appearance" ? "active" : ""}
-            onClick={() => setPage("appearance")}
-          >
-            <Sun size={16} />
-            外观与编辑
-          </button>
-          <button
-            className={page === "agents" ? "active" : ""}
-            onClick={() => setPage("agents")}
-          >
-            <Sparkles size={16} />
-            智能体
-          </button>
-          <button
-            className={page === "about" ? "active" : ""}
-            onClick={() => setPage("about")}
-          >
-            <BookOpen size={16} />
-            关于 Mirror
-          </button>
-        </nav>
-        <div className="settings-content">
-          {page === "appearance" && (
-            <>
-              <h3>让空间适合你的思考</h3>
-              <p className="muted">设置自动保存，所有文档沿用同一视图模式。</p>
-              <div className="field">
-                主题
-                <div className="theme-cards">
-                  {[
-                    ["light", Sun, "Mirror Light"],
-                    ["dark", Moon, "Mirror Dark"],
-                    ["system", Settings, "跟随系统"],
-                  ].map(([id, Icon, text]) => (
-                    <button
-                      key={id}
-                      className={config.theme === id ? "active" : ""}
-                      onClick={() => onChange({ ...config, theme: id })}
-                    >
-                      <Icon size={22} />
-                      <span>{text}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <label className="field">
-                编辑器字号 <span>{config.fontSize} px</span>
-                <input
-                  type="range"
-                  min="13"
-                  max="24"
-                  value={config.fontSize}
-                  onChange={(e) =>
-                    onChange({ ...config, fontSize: Number(e.target.value) })
-                  }
-                />
-              </label>
-              <div className="settings-note">
-                <Check size={16} />
-                <p>
-                  草稿自动保留在本机。使用 Ctrl S 保存到原文件，Ctrl Shift S
-                  另存为。
-                </p>
-              </div>
-            </>
-          )}
-          {page === "agents" && (
-            <>
-              <h3>接着用你熟悉的 AI 工具</h3>
-              <p className="muted">
-                只有发送提问时，才会传递选区内容和当前对话。
-              </p>
-              <label className="field">
-                连接配置
-                <select
-                  value={profileID}
-                  onChange={(e) => {
-                    const id = e.target.value;
-                    setProfileID(id);
-                    setDraft(config.profiles.find((p) => p.id === id));
-                    setToken("");
-                  }}
-                >
-                  {config.profiles.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field">
-                配置名称
-                <input
-                  value={draft.name}
-                  onChange={(e) => patch({ name: e.target.value })}
-                />
-              </label>
-              {draft.kind === "http" ? (
-                <>
-                  <label className="field">
-                    基础地址（包含 /v1）
-                    <input
-                      placeholder="http://127.0.0.1:18789/v1"
-                      value={draft.endpoint}
-                      onChange={(e) => patch({ endpoint: e.target.value })}
-                    />
-                  </label>
-                  <label className="field">
-                    API Key / Bearer Token
-                    <input
-                      type="password"
-                      autoComplete="off"
-                      placeholder="留空保留现有密钥"
-                      value={token}
-                      onChange={(e) => setToken(e.target.value)}
-                    />
-                  </label>
-                  <Button
-                    onClick={() =>
-                      safely(async () => {
-                        await api("credential-save", draft.id, "");
-                        toast("密钥已删除");
-                      })
-                    }
-                  >
-                    删除已保存的密钥
-                  </Button>
-                </>
-              ) : (
-                <label className="field">
-                  可执行文件
-                  <input
-                    placeholder={
-                      draft.kind === "custom"
-                        ? "C:\\Tools\\agent.exe"
-                        : `${draft.kind}（留空自动查找 PATH）`
-                    }
-                    value={draft.executable}
-                    onChange={(e) => patch({ executable: e.target.value })}
-                  />
-                </label>
-              )}
-              {draft.kind === "custom" ? (
-                <label className="field">
-                  参数（JSON 字符串数组）
-                  <input
-                    value={draft.arguments}
-                    onChange={(e) => patch({ arguments: e.target.value })}
-                  />
-                </label>
-              ) : (
-                <label className="field">
-                  模型 ID
-                  <input
-                    placeholder={
-                      draft.kind === "http"
-                        ? "必填，例如服务返回的模型 ID"
-                        : "留空使用 CLI 默认模型"
-                    }
-                    value={draft.model}
-                    onChange={(e) => patch({ model: e.target.value })}
-                  />
-                </label>
-              )}
-              {draft.kind === "codex" && (
-                <label className="field">
-                  思考深度
-                  <select
-                    value={draft.effort || ""}
-                    onChange={(e) => patch({ effort: e.target.value })}
-                  >
-                    {["", "minimal", "low", "medium", "high", "xhigh"].map(
-                      (value) => (
-                        <option key={value} value={value}>
-                          {value || "默认"}
-                        </option>
-                      ),
-                    )}
-                  </select>
-                </label>
-              )}
-              <div className="settings-note">
-                <AlertCircle size={16} />
-                <p>
-                  {draft.kind === "codex"
-                    ? "需要已安装并登录 Codex CLI。首版每轮使用独立只读会话，携带 Mirror 中的对话上下文。"
-                    : draft.kind === "claude"
-                      ? "需要已安装并登录 Claude Code CLI。使用无工具的文字输出模式。"
-                      : draft.kind === "http"
-                        ? "兼容 /chat/completions 的流式或 JSON 服务；认证信息通过 Windows 系统加密保存。"
-                        : "直接启动命令，不经过 shell。stdin 接收含 system、reference、messages 的 JSON，stdout 返回 UTF-8 文字。"}
-                </p>
-              </div>
-              <Button className="primary" icon={Check} onClick={saveProfile}>
-                保存并设为默认
-              </Button>
-              <p className="muted">
-                已有对话沿用创建时的配置；更新后请重新选区开启对话。
-              </p>
-            </>
-          )}
-          {page === "about" && (
-            <div className="about">
-              <img src="./icon.png" alt="Mirror" />
-              <h3>Mirror for Windows</h3>
-              <p>0.1.0 · 写作、阅读与对话</p>
-              <p className="muted">
-                沿用 Mirror 的安静界面，在 Windows
-                上让文字自然展开。文档、草稿、版本与对话都保留在本机。
-              </p>
-              <div className="settings-note">
-                <p>
-                  首版尚未迁移已有 Codex 会话引用、Smartwork 原生协议和
-                  WorkBuddy Open API。兼容服务或包装命令可在智能体设置中接入。
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </Modal>
   );
 }
 createRoot(document.getElementById("root")).render(<App />);

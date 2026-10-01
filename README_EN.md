@@ -4,7 +4,7 @@
 
 Mirror is a Markdown editor for macOS. Preview as you write, or select a passage and ask AI about it.
 
-[Download Mirror 1.2.0](https://github.com/BoneInk/Mirror/releases/tag/v1.2.0) · macOS 14+ · Intel / Apple Silicon
+[Download Mirror 1.3.0](https://github.com/BoneInk/Mirror/releases/tag/v1.3.0) · macOS 14+ · Intel / Apple Silicon
 
 ## What makes it different
 
@@ -44,6 +44,8 @@ bash scripts/build-dmg.sh --skip-build
 
 Outputs are in `dist/`. Regression checks are in `scripts/test-*.sh`.
 
-## Windows edition (initial port)
+## Windows edition
 
-An independent [Windows desktop project](Windows/README.md) preserves Mirror’s visual style and core Markdown, reading, offline rendering, and selection-based AI workflows. Built with Electron and React, with NSIS and portable build targets. See the Windows README for setup, supported agent protocols, and current parity limits.
+[Download Windows 1.3.1](https://github.com/BoneInk/Mirror/releases/tag/v1.3.1) · Windows 10 / 11 · x64 installer and portable editions.
+
+The [Windows desktop project](Windows/README.md) aligns the paper canvas, nine themes, typography, interactive Mermaid frames, workspace search and external-file notifications with macOS. It supports existing Codex threads, Smartwork, WorkBuddy and native agent CLIs. See the Windows README for setup, validation and platform-specific differences.

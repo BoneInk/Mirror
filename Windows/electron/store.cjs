@@ -7,7 +7,18 @@ async function atomicWrite(target, content) {
   const temporary = `${target}.${crypto.randomUUID()}.tmp`;
   try {
     await fs.writeFile(temporary, content, { encoding: "utf8", flag: "wx" });
-    await fs.rename(temporary, target);
+    // Windows readers and scanners can briefly hold the destination open.
+    // Retry the atomic replacement; never remove the original as a fallback.
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await fs.rename(temporary, target);
+        break;
+      } catch (error) {
+        if (attempt >= 5 || !["EPERM", "EBUSY", "EACCES"].includes(error.code))
+          throw error;
+        await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)));
+      }
+    }
   } finally {
     await fs.unlink(temporary).catch(() => {});
   }

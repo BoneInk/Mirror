@@ -46,6 +46,8 @@ bash scripts/build-dmg.sh --skip-build
 
 产物位于 `dist/`。回归检查见 `scripts/test-*.sh`。
 
-## Windows 版本（首版）
+## Windows 版本
 
-新增独立的 [Windows 桌面项目](Windows/README.md)，沿用 Mirror 的设计，支持本地 Markdown、多标签、编辑/预览/阅读、离线图表与公式、选区 AI 对话、草稿恢复与 HTML/PDF 导出。使用 Electron + React，提供 Windows 安装版和便携版构建配置。首版功能范围、智能体协议与验证边界见 Windows 文档。
+[下载 Windows 1.3.1](https://github.com/BoneInk/Mirror/releases/tag/v1.3.1) · Windows 10 / 11 · x64 安装版 / 便携版。
+
+[Windows 桌面项目](Windows/README.md) 同步 macOS 的纸张画布、九套主题、阅读排版、Mermaid 缩放与外框调整、工作区搜索和文件变化通知，支持 Codex 原会话续聊、Smartwork、WorkBuddy 与多种原生 CLI。详见 Windows 文档与验收记录。

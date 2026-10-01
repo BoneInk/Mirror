@@ -36,7 +36,7 @@ function findExecutable(command) {
     );
   for (const dir of dirs.filter(Boolean)) {
     for (const extension of process.platform === "win32"
-      ? ["", ".exe", ".cmd", ".bat"]
+      ? [".exe", ".cmd", ".bat", ""]
       : [""]) {
       const candidate = path.join(dir, command + extension);
       if (fs.existsSync(candidate) && fs.statSync(candidate).isFile())
@@ -140,7 +140,10 @@ function cliTurn(profile, reference, messages, onDelta, signal) {
   let command = profile.executable;
   let args;
   let input = "";
-  if (profile.kind === "codex") {
+  if (
+    profile.kind === "codex" &&
+    require("./profiles.cjs").connection(profile) === "native"
+  ) {
     command ||= "codex";
     args = [
       "exec",
@@ -155,11 +158,90 @@ function cliTurn(profile, reference, messages, onDelta, signal) {
       args.push("-c", `model_reasoning_effort="${profile.effort}"`);
     args.push("-");
     input = prompt;
-  } else if (profile.kind === "claude") {
-    command ||= "claude";
-    args = ["--print", "--output-format", "text", "--tools", ""];
+  } else if (require("./profiles.cjs").connection(profile) === "native") {
+    const commands =
+      require("./profiles.cjs").nativeCommands[profile.kind] || [];
+    if (!command)
+      command =
+        commands.find((candidate) => {
+          try {
+            findExecutable(candidate);
+            return true;
+          } catch {
+            return false;
+          }
+        }) || commands[0];
+    const nativeArgs = {
+      claude: [
+        "-p",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--include-partial-messages",
+        "--tools",
+        "",
+        "--strict-mcp-config",
+        "--disable-slash-commands",
+        "--safe-mode",
+        "--no-session-persistence",
+      ],
+      codebuddy: [
+        "-p",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--include-partial-messages",
+        "--tools",
+        "",
+        "--strict-mcp-config",
+        "--no-session-persistence",
+      ],
+      cursor: ["-p", "--mode=ask", "--output-format", "text"],
+      kimi: ["--quiet", "--plan"],
+      qoder: [
+        "--tools",
+        "",
+        "--strict-mcp-config",
+        "-p",
+        "--output-format",
+        "text",
+        "--no-session-persistence",
+      ],
+      opencode: [
+        "run",
+        "--format",
+        "json",
+        "--pure",
+        "--agent",
+        "mirror-reader",
+      ],
+      pi: [
+        "--print",
+        "--mode",
+        "json",
+        "--no-session",
+        "--no-tools",
+        "--no-extensions",
+        "--no-skills",
+        "--no-prompt-templates",
+        "--no-context-files",
+      ],
+    };
+    args = nativeArgs[profile.kind];
+    if (!args) throw Error("此智能体需要配置 HTTP 服务或包装命令。");
     if (profile.model) args.push("--model", profile.model);
+    if (profile.effort && ["claude", "pi"].includes(profile.kind))
+      args.push(
+        profile.kind === "pi" ? "--thinking" : "--effort",
+        profile.effort,
+      );
     input = prompt;
+    if (profile.kind === "cursor") {
+      if (args.join(" ").length + prompt.length > 28000)
+        throw Error("Cursor 输入过长，请缩短引用或另起对话。");
+      args.push(prompt);
+      input = "";
+    }
   } else {
     args = JSON.parse(profile.arguments || "[]");
     if (!Array.isArray(args) || !args.every((x) => typeof x === "string"))
@@ -167,6 +249,26 @@ function cliTurn(profile, reference, messages, onDelta, signal) {
     input = JSON.stringify({ system: SYSTEM, reference, messages });
   }
   const spec = resolveCommand(command, args);
+  if (profile.kind === "opencode")
+    spec.env = {
+      ...spec.env,
+      OPENCODE_CONFIG_CONTENT: JSON.stringify({
+        permission: "deny",
+        agent: {
+          "mirror-reader": {
+            description: "Mirror reading assistant",
+            mode: "primary",
+            permission: "deny",
+          },
+        },
+        share: "disabled",
+      }),
+    };
+  if (profile.kind === "codebuddy")
+    spec.env = { ...spec.env, CODEBUDDY_CODE_DISABLE_BACKGROUND_TASKS: "1" };
+  const structured =
+    require("./profiles.cjs").connection(profile) === "native" &&
+    ["codex", "claude", "codebuddy", "opencode", "pi"].includes(profile.kind);
   return new Promise((resolve, reject) => {
     const child = spawn(spec.command, spec.args, {
       shell: false,
@@ -177,6 +279,9 @@ function cliTurn(profile, reference, messages, onDelta, signal) {
     let total = "";
     let pending = "";
     let stderr = "";
+    let protocolError = false,
+      completed = false;
+    const seen = new Set();
     const push = (text) => {
       if (!text) return;
       total += text;
@@ -190,15 +295,67 @@ function cliTurn(profile, reference, messages, onDelta, signal) {
       if (!line.trim()) return;
       try {
         const event = JSON.parse(line);
+        const finalText = (value) => {
+          if (typeof value !== "string") return;
+          if (value.startsWith(total)) push(value.slice(total.length));
+          else {
+            total = value;
+          } // The done event replaces a divergent streamed draft.
+        };
+        if (["claude", "codebuddy"].includes(profile.kind)) {
+          if (
+            event.type === "stream_event" &&
+            event.event?.delta?.type === "text_delta"
+          )
+            push(event.event.delta.text);
+          if (event.type === "result") {
+            completed = true;
+            protocolError ||= !!event.is_error;
+            finalText(event.result);
+          }
+        }
+        if (profile.kind === "opencode") {
+          if (event.type === "step_finish") completed = true;
+          if (
+            event.type === "text" &&
+            event.part?.text &&
+            !seen.has(event.part.id)
+          ) {
+            seen.add(event.part.id);
+            push((total ? "\n\n" : "") + event.part.text);
+          }
+        }
+        if (profile.kind === "pi") {
+          if (
+            event.type === "message_update" &&
+            event.assistantMessageEvent?.type === "text_delta"
+          )
+            push(event.assistantMessageEvent.delta);
+          if (
+            event.type === "message_end" &&
+            event.message?.role === "assistant"
+          ) {
+            completed = true;
+            protocolError ||= event.message.stopReason === "error";
+            finalText(
+              (event.message.content || [])
+                .filter((part) => part.type === "text")
+                .map((part) => part.text)
+                .join(""),
+            );
+          }
+        }
         if (
           event.type === "item.completed" &&
           event.item?.type === "agent_message"
         )
           push(event.item.text);
         if (event.type === "error" || event.type === "turn.failed") {
+          protocolError = true;
           stderr = event.message || event.error?.message || "Codex 会话失败";
         }
       } catch {
+        protocolError = true;
         stderr = "Codex 输出无法解析，请升级 Codex CLI。";
       }
     };
@@ -214,7 +371,7 @@ function cliTurn(profile, reference, messages, onDelta, signal) {
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
     child.stdout.on("data", (data) => {
-      if (profile.kind !== "codex") {
+      if (!structured) {
         push(data);
         return;
       }
@@ -235,10 +392,14 @@ function cliTurn(profile, reference, messages, onDelta, signal) {
     child.on("error", reject);
     child.on("close", (code) => {
       signal.removeEventListener("abort", abort);
-      if (profile.kind === "codex" && pending) parse(pending);
+      if (structured && pending) parse(pending);
       if (signal.aborted) return;
       // Never echo CLI diagnostics: custom programs may print credentials.
-      if (code !== 0)
+      if (
+        code !== 0 ||
+        protocolError ||
+        (structured && profile.kind !== "codex" && !completed)
+      )
         reject(
           new Error(`智能体进程退出（${code}）。请在终端检查 CLI 登录和版本。`),
         );
@@ -256,7 +417,26 @@ function cliTurn(profile, reference, messages, onDelta, signal) {
   });
 }
 async function runTurn(profile, token, reference, messages, onDelta, signal) {
-  return profile.kind === "http"
+  const kind = require("./profiles.cjs").connection(profile);
+  if (kind === "smartwork")
+    return require("./services.cjs").smartworkTurn(
+      profile,
+      token,
+      reference,
+      messages,
+      onDelta,
+      signal,
+    );
+  if (kind === "workbuddy")
+    return require("./services.cjs").workbuddyTurn(
+      profile,
+      token,
+      reference,
+      messages,
+      onDelta,
+      signal,
+    );
+  return kind === "http"
     ? httpTurn(profile, token, reference, messages, onDelta, signal)
     : cliTurn(profile, reference, messages, onDelta, signal);
 }
