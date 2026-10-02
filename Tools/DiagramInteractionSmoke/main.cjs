@@ -38,7 +38,7 @@ const script = renderer.split('static let previewScript = #"""')[1].split('"""#'
     });
     assert.equal(await zoomLabel.textContent(), '100%');
     assert.equal(await page.locator('.diagram-tools').count(), 1);
-    assert.equal(await page.locator('.diagram-resize').count(), 3);
+    assert.equal(await page.locator('.diagram-resize').count(), 0);
     assert.equal(await page.locator('.mirror-image-resize,.mirror-image-frame').count(), 0);
     const images = await page.locator('article img').evaluateAll(nodes => nodes.map(node => node.outerHTML));
     await canvas.scrollIntoViewIfNeeded();
@@ -47,38 +47,60 @@ const script = renderer.split('static let previewScript = #"""')[1].split('"""#'
     const frame = page.locator('.diagram-block');
     const frameSize = () => frame.evaluate(node => ({width:node.getBoundingClientRect().width,height:node.querySelector('.diagram-canvas').clientHeight}));
     const originalFrame = await frameSize();
-    const resizeHandle = page.locator('.diagram-resize-corner');
-    const resizeDrag = async (handle, dx, dy) => {
-      const box = await handle.boundingBox();
-      await page.mouse.move(box.x+box.width/2,box.y+box.height/2);
-      await page.mouse.down();
-      await page.mouse.move(box.x+box.width/2+dx,box.y+box.height/2+dy,{steps:5});
+    const edgePoint = async edge => {
+      const box = await frame.boundingBox();
+      return {x:edge === 'bottom' ? box.x+box.width/2 : box.x+box.width-5,
+        y:edge === 'right' ? box.y+box.height/2 : box.y+box.height-5};
     };
-    await resizeDrag(resizeHandle,-120,-40); await page.mouse.up();
+    const resizeDrag = async (edge, dx, dy) => {
+      const point = await edgePoint(edge);
+      await page.mouse.move(point.x,point.y);
+      assert.equal(await canvas.evaluate(node=>getComputedStyle(node).cursor),
+        edge === 'right' ? 'ew-resize' : edge === 'bottom' ? 'ns-resize' : 'nwse-resize');
+      await page.mouse.down();
+      await page.mouse.move(point.x+dx,point.y+dy,{steps:5});
+    };
+    const appearance = () => frame.evaluate(node => {
+      const style = getComputedStyle(node);
+      return {background:style.background,border:style.border,shadow:style.boxShadow,
+        before:getComputedStyle(node,'::before').content,after:getComputedStyle(node,'::after').content};
+    });
+    const originalAppearance = await appearance();
+    await resizeDrag('corner',-120,-40); await page.mouse.up();
+    assert.deepEqual(await appearance(),originalAppearance);
     let resizedFrame = await frameSize();
     assert.ok(Math.abs(resizedFrame.width-originalFrame.width+120)<1);
     assert.equal(resizedFrame.height,originalFrame.height-40);
     assert.equal(await zoomLabel.textContent(),'100%');
     const resized = await state();
-    await resizeDrag(resizeHandle,-40,-20); await page.keyboard.press('Escape'); await page.mouse.up();
+    await resizeDrag('corner',-40,-20); await page.keyboard.press('Escape'); await page.mouse.up();
     assert.deepEqual(await frameSize(),resizedFrame);
     assert.deepEqual(await state(),resized);
-    await resizeDrag(page.locator('.diagram-resize-right'),60,0); await page.mouse.up();
+    await resizeDrag('right',60,0); await page.mouse.up();
     assert.ok(Math.abs((await frameSize()).width-resizedFrame.width-60)<1);
     assert.equal((await frameSize()).height,resizedFrame.height);
     resizedFrame = await frameSize();
-    const below = () => frame.evaluate(node=>node.nextElementSibling.getBoundingClientRect().top);
+    // Compare document positions; browser scroll anchoring can change viewport offsets.
+    const below = () => frame.evaluate(node=>node.nextElementSibling.getBoundingClientRect().top+window.scrollY);
     const belowBefore = await below();
-    await resizeDrag(page.locator('.diagram-resize-bottom'),0,50); await page.mouse.up();
+    await resizeDrag('bottom',0,50); await page.mouse.up();
     assert.deepEqual(await frameSize(),{width:resizedFrame.width,height:resizedFrame.height+50});
     assert.ok(Math.abs((await below())-belowBefore-50)<1);
-    await resizeHandle.focus(); await page.keyboard.press('ArrowDown');
+    await frame.focus(); await page.keyboard.press('ArrowDown');
     assert.equal((await frameSize()).height,resizedFrame.height+51);
+    await page.keyboard.press('Shift+ArrowDown');
+    assert.equal((await frameSize()).height,resizedFrame.height+61);
     const svgSize = await canvas.locator('svg').evaluate(node=>({width:node.getBoundingClientRect().width,height:node.getBoundingClientRect().height,ratio:node.viewBox.baseVal.width/node.viewBox.baseVal.height}));
     assert.ok(Math.abs(svgSize.width/svgSize.height-svgSize.ratio)<.001);
     await page.getByRole('button',{name:'Reset and fit diagram'}).click();
     assert.deepEqual(await frameSize(),originalFrame);
     assert.deepEqual(await state(),initial);
+    // Pointer hover changes only the cursor; it draws no grip, strip, or extra border.
+    const bottom = await edgePoint('bottom'); await page.mouse.move(bottom.x,bottom.y);
+    assert.deepEqual(await appearance(),originalAppearance);
+    await canvas.hover({position:{x:80,y:70}});
+    assert.equal(await canvas.evaluate(node=>getComputedStyle(node).cursor),'grab');
+    assert.equal(await frame.getAttribute('data-resize-edge'),null);
     const drag = async (dx, dy) => {
       const box = await canvas.boundingBox();
       await page.mouse.move(box.x+box.width/2,box.y+box.height/2);
@@ -143,13 +165,15 @@ const script = renderer.split('static let previewScript = #"""')[1].split('"""#'
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
     assert.deepEqual(await page.locator('article img').evaluateAll(nodes=>nodes.map(node=>node.outerHTML)),images);
     if (process.env.DIAGRAM_SCREENSHOT_PATH) {
+      await page.evaluate(()=>document.activeElement.blur());
+      await page.mouse.move(0,0);
       await page.locator('.diagram-block').screenshot({path:process.env.DIAGRAM_SCREENSHOT_PATH});
     }
     // Print layout must show the complete diagram even after a user zooms and pans.
     await page.getByRole('button',{name:'Zoom in diagram',exact:true}).click();
     await page.emulateMedia({media:'print'});
     assert.equal(await page.locator('.diagram-tools').isVisible(),false);
-    assert.equal(await resizeHandle.isVisible(),false);
+    assert.equal(await page.locator('.diagram-resize').count(),0);
     assert.equal(await canvas.locator('.diagram-content').evaluate(node=>getComputedStyle(node).transform),'none');
     await page.emulateMedia({media:'screen'});
     // Live content updates install one independent controller per successful diagram.
@@ -162,6 +186,7 @@ const script = renderer.split('static let previewScript = #"""')[1].split('"""#'
     assert.deepEqual(await labels.allTextContents(),['120%','100%']);
     await page.evaluate(()=>window.mirrorRenderAll());
     assert.equal(await page.locator('.diagram-tools').count(),2);
+    assert.equal(await page.locator('.diagram-resize').count(),0);
     await page.evaluate(()=>window.mirrorReplaceContent(
       '<div class="diagram-block"><div class="code-header">Mermaid</div><div class="diagram-canvas mermaid">flowchart ???</div></div>',
       3,'Invalid diagram',0,0,.35,'top',2));
@@ -174,7 +199,7 @@ const script = renderer.split('static let previewScript = #"""')[1].split('"""#'
     await exported.setContent(html);
     await exported.waitForFunction(()=>window.mirrorEnhancementsDone && document.querySelector('.diagram-canvas svg'));
     assert.equal(await exported.locator('.diagram-tools,.diagram-content,.diagram-resize').count(),0);
-    console.log('diagram-interaction-smoke-ok: frame corner and border resize, layout reflow, auto fit, aspect ratio, resize Escape and keyboard, drag, buttons, cursor zoom, pinch, limits, responsive fit, live replacement, independent diagrams, syntax errors, images, print, export');
+    console.log('diagram-interaction-smoke-ok: handle-free edge hit testing and cursors, unchanged frame appearance, corner and border resize, layout reflow, auto fit, aspect ratio, resize Escape and keyboard, drag, buttons, cursor zoom, pinch, limits, responsive fit, live replacement, independent diagrams, syntax errors, images, print, export');
   } finally {
     await browser.close(); fs.rmSync(directory,{recursive:true,force:true});
   }

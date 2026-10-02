@@ -1137,22 +1137,19 @@ enum MarkdownDiagramInteraction {
         .diagram-tools button{width:25px;height:24px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--fg);font:16px/1 system-ui;cursor:pointer;padding:0}
         .diagram-tools button:hover{background:var(--code)}
         .diagram-tools button:disabled{opacity:.35;cursor:default}
-        .diagram-tools button:focus-visible,.diagram-interactive:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+        .diagram-tools button:focus-visible,.diagram-interactive:focus-visible,.diagram-frame:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
         .diagram-zoom{min-width:42px;text-align:center;font:11px/1 system-ui;color:var(--muted);font-variant-numeric:tabular-nums}
         .diagram-canvas.diagram-interactive{position:relative;padding:0;overflow:hidden;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
         .diagram-interactive.dragging{cursor:grabbing}
-        .diagram-frame{position:relative;max-width:100%}
+        .diagram-frame{position:relative;max-width:100%;touch-action:none}
         .diagram-frame.resizing{user-select:none;-webkit-user-select:none}
-        .diagram-resize{position:absolute;z-index:3;padding:0;border:0;background:transparent;touch-action:none}
-        .diagram-resize-right{right:0;top:32px;bottom:14px;width:8px;cursor:ew-resize}
-        .diagram-resize-bottom{left:0;right:14px;bottom:0;height:8px;cursor:ns-resize}
-        .diagram-resize-corner{right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize;background:repeating-linear-gradient(135deg,transparent 0 3px,var(--muted) 3px 4px,transparent 4px 6px);clip-path:polygon(100% 0,100% 100%,0 100%);opacity:.5}
-        .diagram-resize-right:hover,.diagram-resize-bottom:hover{background:color-mix(in srgb,var(--accent) 25%,transparent)}
-        .diagram-resize:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+        .diagram-frame[data-resize-edge="right"],.diagram-frame[data-resize-edge="right"] .diagram-interactive{cursor:ew-resize}
+        .diagram-frame[data-resize-edge="bottom"],.diagram-frame[data-resize-edge="bottom"] .diagram-interactive{cursor:ns-resize}
+        .diagram-frame[data-resize-edge="corner"],.diagram-frame[data-resize-edge="corner"] .diagram-interactive{cursor:nwse-resize}
         .diagram-content{position:absolute;left:0;top:0;transform-origin:0 0}
         .diagram-canvas .diagram-content>svg{display:block;width:100%;height:100%;max-width:none!important;margin:0}
         @media print{
-          .diagram-tools,.diagram-resize{display:none!important}
+          .diagram-tools{display:none!important}
           .diagram-frame{width:auto!important;max-width:none!important}
           .diagram-canvas.diagram-interactive{height:auto!important;padding:1.25em;overflow:visible;cursor:auto}
           .diagram-content{position:static;width:auto!important;height:auto!important;transform:none!important}
@@ -1178,6 +1175,10 @@ enum MarkdownDiagramInteraction {
         const height = box.height || svg.getBoundingClientRect().height;
         if (!(width > 0 && height > 0)) return;
         const chinese = (navigator.language || '').startsWith('zh');
+        block.tabIndex = 0;
+        block.setAttribute('role', 'group');
+        block.setAttribute('aria-label', chinese ? '流程图外框：拖动右边或下边调整大小，方向键微调，0 复位'
+          : 'Diagram frame: drag right or bottom edge to resize, arrow keys adjust, 0 to reset');
         canvas.classList.add('diagram-interactive');
         canvas.tabIndex = 0;
         canvas.setAttribute('role', 'region');
@@ -1196,13 +1197,21 @@ enum MarkdownDiagramInteraction {
         const larger = button('+', chinese ? '放大流程图' : 'Zoom in diagram');
         const reset = button('↺', chinese ? '复位并适配流程图' : 'Reset and fit diagram');
         header.appendChild(tools);
-        const handles = ['right', 'bottom', 'corner'].map(edge => {
-          const handle = document.createElement('button'); handle.type = 'button';
-          handle.className = `diagram-resize diagram-resize-${edge}`; handle.dataset.edge = edge;
-          handle.title = chinese ? `拖动${edge === 'right' ? '右边框调整宽度' : edge === 'bottom' ? '下边框调整高度' : '右下角调整外框宽高'}；方向键微调；Esc 取消`
-            : `Drag ${edge === 'right' ? 'right border to resize width' : edge === 'bottom' ? 'bottom border to resize height' : 'corner to resize frame'}; arrow keys adjust; Escape to cancel`;
-          handle.setAttribute('aria-label', handle.title); block.appendChild(handle); return handle;
-        });
+        // Hit-test the existing frame instead of drawing or overlaying resize controls.
+        const edgeAt = event => {
+          if (event.target.closest('a,button')) return null;
+          const rect = block.getBoundingClientRect();
+          const right = rect.right - event.clientX, bottom = rect.bottom - event.clientY;
+          if (event.clientX < rect.left || event.clientY < canvas.getBoundingClientRect().top || right < 0 || bottom < 0) return null;
+          if (right <= 14 && bottom <= 14) return 'corner';
+          if (right <= 8) return 'right';
+          if (bottom <= 8) return 'bottom';
+          return null;
+        };
+        const showEdge = edge => {
+          if (edge) block.dataset.resizeEdge = edge;
+          else delete block.dataset.resizeEdge;
+        };
         let scale = 1, fitScale = 1, x = 0, y = 0, drag = null, gesture = null, lastWidth = -1, lastHeight = -1, manualHeight = null, fitted = true;
         const minimum = () => fitScale * .25;
         const maximum = () => Math.max(1, fitScale) * 8;
@@ -1249,7 +1258,7 @@ enum MarkdownDiagramInteraction {
         };
         const finish = cancel => {
           if (!drag) return;
-          const current = drag; drag = null; canvas.classList.remove('dragging'); block.classList.remove('resizing');
+          const current = drag; drag = null; canvas.classList.remove('dragging'); block.classList.remove('resizing'); showEdge(null);
           if (cancel) {
             if (current.resizing) {
               block.style.width = current.frameStyleWidth; manualHeight = current.manualHeight;
@@ -1277,40 +1286,40 @@ enum MarkdownDiagramInteraction {
           fitted = false; paint();
         });
         block.addEventListener('pointerdown', event => {
-          const handle = event.target.closest('.diagram-resize');
-          if (!handles.includes(handle) || event.button !== 0 || drag || gesture) return;
-          event.preventDefault(); event.stopPropagation(); handle.focus({preventScroll:true});
-          drag = {id:event.pointerId, px:event.clientX, py:event.clientY, x, y, scale, fitScale, fitted, resizing:handle.dataset.edge,
+          const edge = edgeAt(event);
+          if (!edge || event.button !== 0 || drag || gesture) return;
+          event.preventDefault(); event.stopPropagation(); block.focus({preventScroll:true}); showEdge(edge);
+          drag = {id:event.pointerId, px:event.clientX, py:event.clientY, x, y, scale, fitScale, fitted, resizing:edge,
             frameWidth:block.getBoundingClientRect().width, frameHeight:canvas.clientHeight, frameStyleWidth:block.style.width, manualHeight, capture:block};
           block.setPointerCapture(event.pointerId); block.classList.add('resizing');
-        });
+        }, true);
         block.addEventListener('pointermove', event => {
+          if (!drag && !gesture) showEdge(edgeAt(event));
           if (!drag?.resizing || drag.id !== event.pointerId) return;
           event.preventDefault();
           resizeFrame(drag.frameWidth + (drag.resizing === 'bottom' ? 0 : event.clientX - drag.px),
             drag.frameHeight + (drag.resizing === 'right' ? 0 : event.clientY - drag.py));
         });
+        block.addEventListener('pointerleave', () => { if (!drag?.resizing) showEdge(null); });
         block.addEventListener('pointerup', event => { if (drag?.resizing && drag.id === event.pointerId) finish(false); });
         block.addEventListener('pointercancel', event => { if (drag?.resizing && drag.id === event.pointerId) finish(true); });
         block.addEventListener('lostpointercapture', () => { if (drag?.resizing) finish(true); });
-        for (const handle of handles) {
-          handle.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); });
-          handle.addEventListener('keydown', event => {
+        block.addEventListener('keydown', event => {
+            if (event.target !== block) return;
             if (event.key === 'Escape') { event.preventDefault(); finish(true); return; }
             if (event.metaKey || event.ctrlKey || event.altKey) return;
             if (event.key === '0' || event.key === 'Home') { event.preventDefault(); resetFrame(); return; }
             if (!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)) return;
             event.preventDefault(); event.stopPropagation(); finish(false);
-            const step = event.shiftKey ? 10 : 1, edge = handle.dataset.edge;
-            resizeFrame(block.getBoundingClientRect().width + (edge !== 'bottom' ? event.key === 'ArrowRight' ? step : event.key === 'ArrowLeft' ? -step : 0 : 0),
-              canvas.clientHeight + (edge !== 'right' ? event.key === 'ArrowDown' ? step : event.key === 'ArrowUp' ? -step : 0 : 0));
-          });
-        }
+            const step = event.shiftKey ? 10 : 1;
+            resizeFrame(block.getBoundingClientRect().width + (event.key === 'ArrowRight' ? step : event.key === 'ArrowLeft' ? -step : 0),
+              canvas.clientHeight + (event.key === 'ArrowDown' ? step : event.key === 'ArrowUp' ? -step : 0));
+        });
         canvas.addEventListener('pointerup', event => { if (drag?.id === event.pointerId) finish(false); });
         canvas.addEventListener('pointercancel', event => { if (drag?.id === event.pointerId) finish(true); });
         canvas.addEventListener('lostpointercapture', () => { if (drag && !drag.resizing) finish(true); });
         canvas.addEventListener('dblclick', event => {
-          if (event.target.closest('a,.diagram-resize')) return;
+          if (event.target.closest('a') || edgeAt(event)) return;
           event.preventDefault(); resetFrame();
         });
         canvas.addEventListener('wheel', event => {

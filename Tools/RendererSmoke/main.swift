@@ -255,7 +255,7 @@ final class SmokeDelegate: NSObject, WKNavigationDelegate {
                   (result["displays"] as? Int ?? 0) >= 1,
                   (result["diagrams"] as? Int ?? 0) == 1,
                   (result["diagramControls"] as? Int ?? 0) == 1,
-                  (result["diagramResizeHandles"] as? Int ?? 0) == 3,
+                  (result["diagramResizeHandles"] as? Int ?? 1) == 0,
                   (result["interactiveDiagrams"] as? Int ?? 0) == 1,
                   (result["imageHandles"] as? Int ?? 1) == 0,
                   (result["footnotes"] as? Int ?? 0) == 1,
