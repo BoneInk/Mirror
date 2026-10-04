@@ -23,7 +23,8 @@ function findExecutable(command) {
   if (!command || typeof command !== "string")
     throw new Error("请配置智能体命令。");
   if (path.isAbsolute(command)) {
-    if (!fs.existsSync(command)) throw new Error(`找不到命令：${command}`);
+    if (!fs.existsSync(command) || !fs.statSync(command).isFile())
+      throw new Error(`找不到命令：${command}`);
     return command;
   }
   if (/[\\/]/.test(command))

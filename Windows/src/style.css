@@ -1174,10 +1174,6 @@ button:hover {
   border-radius: 12px;
   white-space: nowrap;
 }
-.selection-action > span {
-  color: var(--muted);
-  font-size: 10px;
-}
 .selection-action .button {
   font-size: 11px;
 }

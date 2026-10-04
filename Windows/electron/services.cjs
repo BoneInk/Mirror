@@ -232,12 +232,21 @@ async function discoverProfiles(profiles) {
           : nativeCommands[profile.kind] || []) {
           try {
             const spec = resolveCommand(command, []);
-            return { id: profile.id, status: "检测到命令", command };
+            return {
+              id: profile.id,
+              availability: "available",
+              status: "检测到命令",
+              command,
+            };
           } catch {
             /* Try an alternate official CLI name. */
           }
         }
-        return { id: profile.id, status: "未检测到命令，可手动配置" };
+        return {
+          id: profile.id,
+          availability: "missing",
+          status: "未检测到命令，可手动配置",
+        };
       }
       if (profile.kind === "workbuddy")
         return { id: profile.id, status: "需授权 Token，并保持电脑端在线" };

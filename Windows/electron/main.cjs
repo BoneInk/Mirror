@@ -434,9 +434,10 @@ function registerIPC() {
   handle("agent-models", async (profile) =>
     listModels(profile, await credential(profile.id)),
   );
-  handle("agent-discover", async () =>
-    discoverProfiles((await settings()).profiles),
+  handle("agent-discover", async (profiles) =>
+    discoverProfiles(profiles || (await settings()).profiles),
   );
+  handle("agent-presets", () => presets);
   handle("codex-threads", async (profile, cursor) =>
     queryCodex(profile, "thread/list", {
       limit: 40,

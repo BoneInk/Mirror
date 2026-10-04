@@ -53,10 +53,23 @@ import { version } from "../package.json";
 import { syncSemanticScroll, editorLines } from "./scroll";
 import { themes, selectedTheme, themeStyle } from "./themes";
 import { Preferences, Typography, ThreadPicker } from "./preferences";
+import { AnchoredLayer } from "./AnchoredLayer";
+import {
+  textareaSelectionAnchor,
+  previewSelectionAnchor,
+} from "./selection-anchor";
+import {
+  isMissing,
+  selectableProfiles,
+  defaultProfile,
+} from "./agent-availability.mjs";
 import hljs from "highlight.js/lib/common";
 import "./style.css";
+import "./native-parity.css";
 const api = (name, ...args) => window.mirror.call(name, ...args);
 const welcome = `# 让想法，在纸上展开\n\n一个安静的空间，容纳尚未成形的思考。\nMirror 把写作、阅读与对话放在同一张桌面上。\n\n## 从一张纸开始\n\n清晰的界面来自秩序：适度的留白、自然的层级，以及随手可用的工具。\n\n**把注意力留给内容**，让工具轻轻退到文字之后。\n\n> 写作不是把复杂的想法藏起来，而是给它一个可以展开的形状。\n\n### 今天想做的事\n\n- [x] 收集灵感，写下最初的几句话\n- [ ] 整理成一篇清晰的文章\n- [ ] 圈选一段内容，与 AI 讨论\n\n## 让结构自然浮现\n\n| 表达 | 方式 | 节奏 |\n| --- | --- | --- |\n| 草稿 | 自由记录 | 轻快 |\n| 阅读 | 梳理思路 | 从容 |\n| 对话 | 选中文字提问 | 深入 |\n\n### 从想法到文章\n\n\`\`\`mermaid\nflowchart LR\n  A[收集灵感] --> B[整理草稿]\n  B --> C[阅读与对话]\n  C --> D[分享文章]\n\`\`\`\n\n公式也可以离线显示：$E = mc^2$。\n\n---\n\n选中编辑器或预览中的文字，点击「提问」。在设置中连接你熟悉的智能体后，就能开始对话。\n`;
+const memoriesForSaving = (values, settings) =>
+  settings.memoryEnabled === false ? values.filter((c) => c.persisted) : values;
 function newDoc(text = "", name = "未命名.md") {
   return {
     id: crypto.randomUUID(),
@@ -85,9 +98,13 @@ function Preview({
   onLink,
   memories = [],
   onMemory,
+  preserveSingleLineBreaks,
 }) {
   const ref = useRef();
-  const html = React.useMemo(() => renderMarkdown(text, path), [text, path]);
+  const html = React.useMemo(
+    () => renderMarkdown(text, path, preserveSingleLineBreaks),
+    [text, path, preserveSingleLineBreaks],
+  );
   useEffect(() => {
     const article = ref.current;
     renderDiagrams(article, dark, true);
@@ -108,6 +125,7 @@ function Preview({
       button.textContent = "◌";
       button.title = "打开此处对话";
       button.setAttribute("aria-label", "打开此处对话");
+      button.dataset.memoryId = memory.id;
       button.onclick = () => onMemory(memory.id);
       target.style.position = "relative";
       target.appendChild(button);
@@ -135,7 +153,52 @@ function Preview({
     </div>
   );
 }
-function Modal({ title, children, onClose, wide }) {
+function Modal({ title, children, onClose, wide, className = "" }) {
+  const ref = useRef();
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    const previous = document.activeElement;
+    const root = ref.current;
+    const focusable = () =>
+      [
+        ...root.querySelectorAll(
+          'button, input, select, textarea, summary, [tabindex="0"]',
+        ),
+      ].filter((n) => !n.disabled && n.getClientRects().length);
+    (
+      root.querySelector('input:not([type="range"]):not([type="checkbox"])') ||
+      focusable()[0]
+    )?.focus();
+    const key = (event) => {
+      if ([...document.querySelectorAll(".modal")].at(-1) !== root) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        close.current();
+      }
+      if (event.key === "Tab") {
+        const nodes = focusable();
+        const i = nodes.indexOf(document.activeElement);
+        if (!nodes.length) {
+          event.preventDefault();
+          return;
+        }
+        if (
+          (event.shiftKey && i <= 0) ||
+          (!event.shiftKey && (i < 0 || i === nodes.length - 1))
+        ) {
+          event.preventDefault();
+          nodes[event.shiftKey ? nodes.length - 1 : 0].focus();
+        }
+      }
+    };
+    document.addEventListener("keydown", key, true);
+    return () => {
+      document.removeEventListener("keydown", key, true);
+      if (previous?.isConnected) previous.focus();
+    };
+  }, []);
   return (
     <div
       className="modal-backdrop"
@@ -144,7 +207,8 @@ function Modal({ title, children, onClose, wide }) {
       }}
     >
       <section
-        className={`modal ${wide ? "wide" : ""}`}
+        className={`modal ${wide ? "wide" : ""} ${className}`}
+        ref={ref}
         role="dialog"
         aria-modal="true"
         aria-label={title}
@@ -156,6 +220,139 @@ function Modal({ title, children, onClose, wide }) {
         {children}
       </section>
     </div>
+  );
+}
+function EditorDecorations({ areaRef, text, config, caretLine }) {
+  const [layout, setLayout] = useState({ positions: [], scrollTop: 0 });
+  React.useLayoutEffect(() => {
+    const area = areaRef.current;
+    if (!area || (!config.showLineNumbers && !config.highlightCurrentLine))
+      return;
+    const measure = () =>
+      setLayout({ positions: editorLines(area), scrollTop: area.scrollTop });
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(area);
+    const scroll = () =>
+      setLayout((v) => ({ ...v, scrollTop: area.scrollTop }));
+    area.addEventListener("scroll", scroll);
+    return () => {
+      observer.disconnect();
+      area.removeEventListener("scroll", scroll);
+    };
+  }, [
+    text,
+    config.showLineNumbers,
+    config.highlightCurrentLine,
+    config.fontSize,
+    config.wordWrap,
+    config.editorFont,
+    config.editorLineSpacing,
+  ]);
+  return (
+    <>
+      {config.highlightCurrentLine && (
+        <div
+          className="current-line"
+          aria-hidden="true"
+          style={{
+            top: (layout.positions[caretLine] || 32) - layout.scrollTop,
+          }}
+        />
+      )}
+      {config.showLineNumbers && (
+        <div className="line-numbers" aria-hidden="true">
+          <div style={{ transform: `translateY(${-layout.scrollTop}px)` }}>
+            {layout.positions.slice(0, -1).map((top, i) => (
+              <div key={i} style={{ height: layout.positions[i + 1] - top }}>
+                {i + 1}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+function ActionPopover({ title, children, anchor, onClose }) {
+  const ref = useRef();
+  const close = useRef(onClose);
+  close.current = onClose;
+  const [position, setPosition] = useState({
+    left: Math.max(12, (anchor?.right || innerWidth - 120) - 250),
+    top: (anchor?.bottom || 54) + 6,
+  });
+  React.useLayoutEffect(() => {
+    const rect = ref.current.getBoundingClientRect();
+    setPosition({
+      left: Math.max(
+        12,
+        Math.min(
+          innerWidth - rect.width - 12,
+          (anchor?.right || innerWidth - 120) - rect.width,
+        ),
+      ),
+      top: Math.max(
+        12,
+        Math.min(innerHeight - rect.height - 12, (anchor?.bottom || 54) + 6),
+      ),
+    });
+    const previous = document.activeElement;
+    ref.current.querySelector("button")?.focus();
+    const outside = (e) => {
+      if (!ref.current.contains(e.target)) close.current();
+    };
+    const key = (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        close.current();
+      }
+      if (["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) {
+        e.preventDefault();
+        const buttons = [...ref.current.querySelectorAll("button")].filter(
+          (n) => !n.disabled,
+        );
+        const current = buttons.indexOf(document.activeElement);
+        const next =
+          e.key === "Home"
+            ? 0
+            : e.key === "End"
+              ? buttons.length - 1
+              : (current + (e.key === "ArrowDown" ? 1 : -1) + buttons.length) %
+                buttons.length;
+        buttons[next]?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", outside, true);
+    document.addEventListener("keydown", key, true);
+    return () => {
+      document.removeEventListener("pointerdown", outside, true);
+      document.removeEventListener("keydown", key, true);
+      if (previous?.isConnected) previous.focus();
+    };
+  }, []);
+  return (
+    <section
+      ref={ref}
+      className="action-popover"
+      role="dialog"
+      aria-label={title}
+      style={position}
+    >
+      {children}
+    </section>
+  );
+}
+function NavigationDrawer({ modal, title, onClose, children, width }) {
+  return modal ? (
+    <Modal title={title} onClose={onClose} wide>
+      <div className="navigation-dialog">{children}</div>
+    </Modal>
+  ) : (
+    <aside className="sidebar" style={{ width }}>
+      {children}
+    </aside>
   );
 }
 function App() {
@@ -172,6 +369,7 @@ function App() {
     profiles: [],
   });
   const [sidebar, setSidebar] = useState("files");
+  const previousDrawer = useRef("files");
   const [filter, setFilter] = useState("");
   const [focus, setFocus] = useState(false);
   const [dialog, setDialog] = useState(null);
@@ -179,8 +377,13 @@ function App() {
   const [selection, setSelection] = useState(null);
   const [conversations, setConversations] = useState([]);
   const [chatID, setChatID] = useState(null);
+  const [chatAnchor, setChatAnchor] = useState(null);
+  const [threadSource, setThreadSource] = useState(null);
   const [question, setQuestion] = useState("");
   const [history, setHistory] = useState([]);
+  const [historyID, setHistoryID] = useState(null);
+  const historyEntry =
+    history.find((entry) => entry.id === historyID) || history[0];
   const [systemDark, setSystemDark] = useState(
     matchMedia("(prefers-color-scheme: dark)").matches,
   );
@@ -192,13 +395,42 @@ function App() {
   const [navigation, setNavigation] = useState(null);
   const [readingProgress, setReadingProgress] = useState(0);
   const syntax = useRef();
+  const [discoveries, setDiscoveries] = useState([]);
+  const [discovering, setDiscovering] = useState(true);
+  const [settingsPage, setSettingsPage] = useState("agents");
+  const [readerMenu, setReaderMenu] = useState(null);
+  const [menuAnchor, setMenuAnchor] = useState(null);
+  const showMenu = (event, name) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    setMenuAnchor({ right: rect.right, bottom: rect.bottom });
+    setDialog(name);
+  };
+  const [caretLine, setCaretLine] = useState(0);
+  const availableAgents = selectableProfiles(config.profiles, discoveries);
+  const openSettings = (page = "agents") => {
+    setSettingsPage(page);
+    setDialog("settings");
+  };
   const [chatOptions, setChatOptions] = useState(false);
   const [chatModels, setChatModels] = useState([]);
-  const codexProfile = config.profiles.find(
+  const codexProfile = availableAgents.find(
     (p) => p.kind === "codex" && (!p.connection || p.connection === "native"),
   );
   const editor = useRef();
   const preview = useRef();
+  const workspace = useRef();
+  const openMemory = useCallback((id) => {
+    const viewport = preview.current;
+    setChatAnchor({
+      element: viewport,
+      preferred: "right",
+      getRect: () =>
+        viewport
+          ?.querySelector(`[data-memory-id="${CSS.escape(id)}"]`)
+          ?.getBoundingClientRect(),
+    });
+    setChatID(id);
+  }, []);
   const current = useRef();
   const scrollSource = useRef(null);
   const pendingDraft = useRef();
@@ -269,6 +501,7 @@ function App() {
       setConversations(
         data.conversations.map((c) => ({
           ...c,
+          persisted: true,
           busy: false,
           needsRefresh: !!c.threadId && (c.needsRefresh || c.busy),
           error: c.busy ? "上次生成已中断，可以继续提问。" : c.error,
@@ -288,7 +521,13 @@ function App() {
         setConfirmClose("quit");
       else
         safely(async () => {
-          await api("conversations-save", current.current.conversations);
+          await api(
+            "conversations-save",
+            memoriesForSaving(
+              current.current.conversations,
+              current.current.config,
+            ),
+          );
           await api("settings-save", current.current.config);
           await api("quit-ready", session());
         });
@@ -358,6 +597,25 @@ function App() {
     };
   }, []);
   useEffect(() => {
+    if (!ready) return;
+    let live = true;
+    setDiscovering(true);
+    api("agent-discover", config.profiles)
+      .then((rows) => {
+        if (live) setDiscoveries(rows);
+      })
+      .catch(() => {
+        // A failed scan must not discard configured connections.
+        if (live) setDiscoveries([]);
+      })
+      .finally(() => {
+        if (live) setDiscovering(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, [ready, config.profiles, dialog === "settings", !!chatID]);
+  useEffect(() => {
     if (ready && pendingDraft.current) {
       addOpened(pendingDraft.current);
       pendingDraft.current = null;
@@ -367,10 +625,10 @@ function App() {
     if (!ready) return;
     const timer = setTimeout(
       () => safely(() => api("session-save", session())),
-      450,
+      (config.autosaveDelay || 0.5) * 1000,
     );
     return () => clearTimeout(timer);
-  }, [tabs, active, folder, ready]);
+  }, [tabs, active, folder, ready, config.autosaveDelay]);
   useEffect(() => {
     if (
       sidebar !== "search" ||
@@ -424,11 +682,24 @@ function App() {
   useEffect(() => {
     if (!ready) return;
     const timer = setTimeout(
-      () => safely(() => api("conversations-save", conversations)),
+      () =>
+        safely(() =>
+          api("conversations-save", memoriesForSaving(conversations, config)),
+        ),
       400,
     );
     return () => clearTimeout(timer);
-  }, [conversations, ready]);
+  }, [conversations, ready, config.memoryEnabled]);
+  useEffect(() => {
+    if (
+      config.memoryEnabled !== false &&
+      conversations.some((c) => !c.persisted)
+    ) {
+      setConversations((values) =>
+        values.map((c) => ({ ...c, persisted: true })),
+      );
+    }
+  }, [config.memoryEnabled, conversations]);
   useEffect(() => {
     if (!notice) return;
     const timer = setTimeout(() => setNotice(""), 4500);
@@ -521,13 +792,22 @@ function App() {
     let text = "";
     let start = 0;
     let end = 0;
+    let anchor;
+    if (!doc) return;
     if (source === "editor") {
+      if (!editor.current) return;
       start = editor.current.selectionStart;
       end = editor.current.selectionEnd;
       text = doc.text.slice(start, end);
-    } else text = window.getSelection()?.toString() || "";
-    if (text.trim())
+      anchor = textareaSelectionAnchor(editor.current);
+    } else {
+      const range = window.getSelection();
+      anchor = previewSelectionAnchor(range, preview.current);
+      text = anchor ? range.toString() : "";
+    }
+    if (text.trim() && anchor)
       setSelection({
+        anchor,
         text: text.slice(0, 20000),
         start,
         end,
@@ -539,11 +819,49 @@ function App() {
       });
     else setSelection(null);
   };
+  useEffect(() => {
+    let frame;
+    const update = () => {
+      if (
+        dialog ||
+        document.activeElement?.closest(
+          ".selection-action, .chat-panel, .modal, .action-popover",
+        )
+      )
+        return;
+      selectedText(
+        document.activeElement === editor.current ? "editor" : "preview",
+      );
+    };
+    const schedule = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(update);
+    };
+    document.addEventListener("selectionchange", schedule);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener("selectionchange", schedule);
+    };
+  }, [doc?.id, doc?.text, config.mode, dialog]);
   const newConversation = () => {
     if (!selection) return;
-    const profile = config.profiles.find((p) => p.id === config.selectedAgent);
+    if (discovering) {
+      toast("正在检测智能体，请稍候…");
+      return;
+    }
+    const profile = defaultProfile(
+      config.profiles,
+      discoveries,
+      config.selectedAgent,
+    );
+    if (!profile) {
+      openSettings();
+      toast("未检测到可用智能体，请先配置连接。");
+      return;
+    }
     const c = {
       id: crypto.randomUUID(),
+      persisted: config.memoryEnabled !== false,
       docID: doc.id,
       path: doc.path,
       name: doc.name,
@@ -554,6 +872,7 @@ function App() {
       busy: false,
     };
     setConversations((values) => [...values, c]);
+    setChatAnchor(selection.anchor);
     setChatID(c.id);
     setQuestion("");
     setSelection(null);
@@ -564,7 +883,8 @@ function App() {
         !question.trim() ||
         !conversation ||
         conversation.busy ||
-        conversation.needsRefresh
+        conversation.needsRefresh ||
+        isMissing(conversation.profile, discoveries)
       )
         return;
       const messages = [
@@ -603,7 +923,11 @@ function App() {
   const exportDocument = (format) =>
     safely(async () => {
       const host = document.createElement("div");
-      host.innerHTML = renderMarkdown(doc.text, doc.path);
+      host.innerHTML = renderMarkdown(
+        doc.text,
+        doc.path,
+        config.preserveSingleLineBreaks,
+      );
       document.body.appendChild(host);
       host.className = "export-staging";
       try {
@@ -676,6 +1000,7 @@ function App() {
     const key = (event) => {
       if (event.key === "Escape") {
         setDialog(null);
+        setReaderMenu(null);
         setSelection(null);
         setChatID(null);
         setConfirmClose(null);
@@ -735,7 +1060,13 @@ function App() {
       className={`app ${dark ? "dark" : ""} ${focus ? "focus-mode" : ""}`}
       style={{
         ...themeStyle(theme),
+        "--source-ratio": `${config.sourceRatio || 50}%`,
+        "--tab-width": config.tabWidth || 2,
         "--editor-size": `${config.fontSize}px`,
+        "--editor-font":
+          config.editorFont || "Consolas, 'Microsoft YaHei UI', monospace",
+        "--code-font": config.codeFont || "Consolas, monospace",
+        "--editor-line-height": `${config.fontSize * 1.5 + (config.editorLineSpacing ?? 6)}px`,
         "--preview-size": `${config.previewSize || 17}px`,
         "--preview-line-height": config.lineHeight || 1.88,
         "--content-width": `${config.contentWidth || 720}px`,
@@ -753,7 +1084,9 @@ function App() {
             {doc.name.replace(/\.(md|markdown)$/i, "")}
             {dirty && <span className="dirty-dot" />}
           </strong>
-          <small>{folder?.name || "本地写作空间"}</small>
+          <small>
+            {doc.path?.split(/[\\/]/).slice(-2, -1)[0] || "尚未保存"}
+          </small>
         </div>
         <div className="top-actions">
           <div className="mode-switch">
@@ -775,15 +1108,12 @@ function App() {
           </div>
           <Button
             icon={Search}
-            title="搜索 (Ctrl F)"
-            aria-label="搜索文档"
-            onClick={() => setSidebar("search")}
-          />
-          <Button
-            icon={Save}
-            title="保存 (Ctrl S)"
-            aria-label="保存"
-            onClick={() => save()}
+            title="快速打开 (Ctrl O)"
+            aria-label="快速打开"
+            onClick={() => {
+              setQuery("");
+              setDialog("quick-open");
+            }}
           />
           <Button
             icon={Command}
@@ -795,19 +1125,16 @@ function App() {
             }}
           />
           <Button
-            icon={Download}
+            icon={Share}
             title="导出"
             aria-label="导出"
-            onClick={() => setDialog("export")}
+            onClick={(event) => showMenu(event, "export")}
           />
           <Button
             icon={MoreHorizontal}
             aria-label="更多操作"
             title="更多操作"
-            onClick={() => {
-              setQuery("");
-              setDialog("commands");
-            }}
+            onClick={(event) => showMenu(event, "more")}
           />
         </div>
         <div className="window-controls">
@@ -863,23 +1190,24 @@ function App() {
               ["files", Folder, "文件"],
               ["outline", List, "大纲"],
               ["search", Search, "查找"],
-              ["chats", MessageSquare, "对话"],
             ].map(([id, Icon, label]) => (
               <button
                 key={id}
-                className={sidebar === id ? "active" : ""}
-                onClick={() => setSidebar(sidebar === id ? null : id)}
+                className={sidebar === id && id !== "search" ? "active" : ""}
+                onClick={() => {
+                  if (id === "search") {
+                    previousDrawer.current =
+                      sidebar === "search" ? previousDrawer.current : sidebar;
+                    setSidebar("search");
+                  } else setSidebar(sidebar === id ? null : id);
+                }}
               >
                 <Icon size={21} strokeWidth={1.6} />
                 <span>{label}</span>
               </button>
             ))}
             <div className="rail-bottom">
-              <button onClick={() => setFocus(true)} title="专注模式">
-                <Focus size={21} />
-                <span>专注</span>
-              </button>
-              <button onClick={() => setDialog("settings")}>
+              <button onClick={() => openSettings()}>
                 <Settings size={21} strokeWidth={1.6} />
                 <span>设置</span>
               </button>
@@ -887,7 +1215,35 @@ function App() {
           </nav>
         )}
         {!focus && sidebar && (
-          <aside className="sidebar">
+          <NavigationDrawer
+            modal={sidebar === "search"}
+            title={searchScope === "workspace" ? "工作区搜索" : "文内查找"}
+            onClose={() => setSidebar(previousDrawer.current)}
+            width={config.sidebarWidth || 252}
+          >
+            <div
+              className="sidebar-resizer"
+              role="separator"
+              aria-label="调整侧栏宽度"
+              aria-orientation="vertical"
+              onPointerDown={(event) => {
+                event.currentTarget.setPointerCapture(event.pointerId);
+              }}
+              onPointerMove={(event) => {
+                if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                  const left =
+                    event.currentTarget.parentElement.getBoundingClientRect()
+                      .left;
+                  setConfig((c) => ({
+                    ...c,
+                    sidebarWidth: Math.max(
+                      210,
+                      Math.min(420, event.clientX - left),
+                    ),
+                  }));
+                }
+              }}
+            />
             <div className="sidebar-title">
               <div>
                 <small>
@@ -1121,6 +1477,7 @@ function App() {
                     >
                       <button
                         onClick={() => {
+                          setChatAnchor(null);
                           setChatID(c.id);
                           setQuestion("");
                         }}
@@ -1153,9 +1510,15 @@ function App() {
                 )}
               </div>
             )}
-          </aside>
+          </NavigationDrawer>
         )}
-        <main className={`workspace mode-${config.mode}`}>
+        <main
+          ref={workspace}
+          className={`workspace mode-${focus && config.mode === "split" ? "edit" : config.mode}`}
+        >
+          <div className="workspace-progress" aria-hidden="true">
+            <span style={{ width: `${readingProgress}%` }} />
+          </div>
           {doc.external && (
             <div className="conflict-banner" role="alert">
               <AlertCircle size={16} />
@@ -1181,42 +1544,60 @@ function App() {
             </div>
           )}
           {config.mode !== "read" && (
-            <section className="editor-pane">
+            <section
+              className="editor-pane"
+              style={
+                config.mode === "split" && !focus
+                  ? { flex: `0 0 calc(${config.sourceRatio || 50}% - 28px)` }
+                  : undefined
+              }
+            >
               <div className="pane-title">
                 <span>MARKDOWN</span>
-                <div className="format-tools">
-                  {[
-                    [Bold, "**", "**", "粗体"],
-                    [Italic, "*", "*", "斜体"],
-                    [Link, "[", "](https://)", "链接"],
-                    [Code, "`", "`", "代码"],
-                    [Quote, "> ", "", "引用"],
-                    [ListTodo, "- [ ] ", "", "待办"],
-                    [
-                      Table,
-                      "\n| 标题 | 标题 |\n| --- | --- |\n| 内容 | 内容 |\n",
-                      "",
-                      "表格",
-                    ],
-                  ].map(([Icon, a, b, label]) => (
-                    <Button
-                      key={label}
-                      icon={Icon}
-                      aria-label={label}
-                      title={label}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => insert(a, b)}
-                    />
-                  ))}
-                </div>
+                <details className="format-menu">
+                  <summary aria-label="格式工具" title="格式工具">
+                    <Type size={13} />
+                  </summary>
+                  <div className="format-tools">
+                    {[
+                      [Bold, "**", "**", "粗体"],
+                      [Italic, "*", "*", "斜体"],
+                      [Link, "[", "](https://)", "链接"],
+                      [Code, "`", "`", "代码"],
+                      [Quote, "> ", "", "引用"],
+                      [ListTodo, "- [ ] ", "", "待办"],
+                      [
+                        Table,
+                        "\n| 标题 | 标题 |\n| --- | --- |\n| 内容 | 内容 |\n",
+                        "",
+                        "表格",
+                      ],
+                    ].map(([Icon, a, b, label]) => (
+                      <Button
+                        key={label}
+                        icon={Icon}
+                        aria-label={label}
+                        title={label}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => insert(a, b)}
+                      />
+                    ))}
+                  </div>
+                </details>
                 <span className="source-label">Source</span>
               </div>
               <div
-                className="source-body"
+                className={`source-body ${config.showLineNumbers ? "with-line-numbers" : ""}`}
                 style={{
                   "--wrap": config.wordWrap === false ? "pre" : "pre-wrap",
                 }}
               >
+                <EditorDecorations
+                  areaRef={editor}
+                  text={doc.text}
+                  config={config}
+                  caretLine={caretLine}
+                />
                 <pre className="syntax-layer" ref={syntax} aria-hidden="true">
                   <code
                     dangerouslySetInnerHTML={{
@@ -1235,6 +1616,14 @@ function App() {
                   key={doc.id}
                   ref={editor}
                   aria-label="Markdown 编辑器"
+                  placeholder="开始用 Markdown 写作…"
+                  onSelect={(e) =>
+                    setCaretLine(
+                      e.target.value
+                        .slice(0, e.target.selectionStart)
+                        .split("\n").length - 1,
+                    )
+                  }
                   spellCheck={!!config.spellCheck}
                   wrap={config.wordWrap === false ? "off" : "soft"}
                   value={doc.text}
@@ -1253,6 +1642,7 @@ function App() {
                     }
                   }}
                   onMouseUp={() => selectedText("editor")}
+                  onFocus={() => selectedText("editor")}
                   onKeyUp={(e) => {
                     if (e.shiftKey) selectedText("editor");
                   }}
@@ -1288,7 +1678,30 @@ function App() {
               </div>
             </section>
           )}
-          {config.mode !== "edit" && (
+          {config.mode === "split" && !focus && (
+            <div
+              className="workspace-resizer"
+              role="separator"
+              aria-label="调整分栏宽度"
+              aria-orientation="vertical"
+              onPointerDown={(e) =>
+                e.currentTarget.setPointerCapture(e.pointerId)
+              }
+              onPointerMove={(e) => {
+                if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+                const rect =
+                  e.currentTarget.parentElement.getBoundingClientRect();
+                setConfig((c) => ({
+                  ...c,
+                  sourceRatio: Math.max(
+                    25,
+                    Math.min(75, ((e.clientX - rect.left) / rect.width) * 100),
+                  ),
+                }));
+              }}
+            />
+          )}
+          {config.mode !== "edit" && !(focus && config.mode === "split") && (
             <section className="preview-pane">
               <div className="reader-heading">
                 <span>{config.mode === "read" ? "沉浸阅读" : "实时预览"}</span>
@@ -1296,6 +1709,7 @@ function App() {
               </div>
               <Preview
                 text={doc.text}
+                preserveSingleLineBreaks={config.preserveSingleLineBreaks}
                 path={doc.path}
                 dark={dark}
                 innerRef={preview}
@@ -1314,10 +1728,13 @@ function App() {
                   syncScroll(preview.current, editor.current, "preview");
                 }}
                 onLink={handleLink}
-                memories={conversations.filter(
+                memories={(config.memoryEnabled === false
+                  ? []
+                  : conversations
+                ).filter(
                   (c) => c.docID === doc.id || (c.path && c.path === doc.path),
                 )}
-                onMemory={setChatID}
+                onMemory={openMemory}
               />
             </section>
           )}
@@ -1334,26 +1751,21 @@ function App() {
                 title="切换阅读宽度"
                 aria-label="切换阅读宽度"
                 onClick={() =>
-                  setConfig((c) => ({
-                    ...c,
-                    contentWidth:
-                      (c.contentWidth || 720) >= 900
-                        ? 720
-                        : (c.contentWidth || 720) + 120,
-                  }))
+                  setReaderMenu(readerMenu === "width" ? null : "width")
                 }
               />
               <Button
                 icon={Contrast}
-                title="切换浅深色"
-                aria-label="切换浅深色"
+                title="阅读主题"
+                aria-label="阅读主题"
                 onClick={() =>
-                  setConfig((c) => ({ ...c, theme: dark ? "light" : "dark" }))
+                  setReaderMenu(readerMenu === "theme" ? null : "theme")
                 }
               />
               <Button
                 icon={Focus}
                 title="专注阅读"
+                className={focus ? "active" : ""}
                 aria-label="专注阅读"
                 onClick={() => setFocus(!focus)}
               />
@@ -1361,13 +1773,55 @@ function App() {
                 icon={Share}
                 title="导出文档"
                 aria-label="阅读导出"
-                onClick={() => setDialog("export")}
+                onClick={(event) => showMenu(event, "export")}
               />
+              {readerMenu && (
+                <div className="reader-menu" role="menu">
+                  {readerMenu === "width"
+                    ? [
+                        [620, "窄"],
+                        [760, "标准"],
+                        [900, "宽"],
+                      ].map(([width, label]) => (
+                        <button
+                          key={width}
+                          role="menuitemradio"
+                          aria-checked={config.contentWidth === width}
+                          onClick={() => {
+                            setConfig((c) => ({ ...c, contentWidth: width }));
+                            setReaderMenu(null);
+                          }}
+                        >
+                          {label}
+                          {config.contentWidth === width && <Check size={12} />}
+                        </button>
+                      ))
+                    : [...themes, ...(config.customThemes || [])].map((t) => (
+                        <button
+                          key={t.id}
+                          role="menuitemradio"
+                          aria-checked={config.theme === t.id}
+                          onClick={() => {
+                            setConfig((c) => ({ ...c, theme: t.id }));
+                            setReaderMenu(null);
+                          }}
+                        >
+                          {t.name}
+                          {config.theme === t.id && <Check size={12} />}
+                        </button>
+                      ))}
+                </div>
+              )}
             </nav>
           )}
           {selection && (
-            <div className="selection-action">
-              <span>{selection.text.length} 字已选中</span>
+            <AnchoredLayer
+              anchor={selection.anchor}
+              boundaryRef={workspace}
+              hideOffscreen
+              className="selection-action"
+              onMouseDown={(e) => e.preventDefault()}
+            >
               <Button
                 icon={Sparkles}
                 className="primary"
@@ -1376,43 +1830,51 @@ function App() {
               >
                 提问
               </Button>
-              {codexProfile && (
-                <Button onClick={() => setDialog("codex-threads")}>
-                  引用到 Codex 会话…
-                </Button>
-              )}
-              <Button
-                icon={X}
-                aria-label="取消选区"
-                onClick={() => setSelection(null)}
-              />
-            </div>
+            </AnchoredLayer>
           )}
         </main>
         {conversation && (
-          <aside className="chat-panel">
+          <AnchoredLayer
+            as="aside"
+            anchor={chatAnchor}
+            boundaryRef={workspace}
+            maxHeight={560}
+            className="chat-panel"
+            role="dialog"
+            aria-label="引用对话"
+          >
             <div className="chat-title">
-              <Sparkles size={17} />
-              <strong>与文字对话</strong>
+              <button
+                onClick={() => setChatOptions(!chatOptions)}
+                title="切换智能体与模型"
+              >
+                {conversation.profile.name}
+                <ChevronDown size={12} />
+              </button>
+              <small>{conversation.profile.model || "默认模型"}</small>
+              <Button
+                icon={Settings}
+                aria-label="智能体设置"
+                title="智能体设置"
+                onClick={() => openSettings()}
+              />
+              <Button
+                icon={Trash2}
+                aria-label="删除气泡记录"
+                title="删除气泡记录"
+                disabled={conversation.busy}
+                onClick={() => {
+                  setConversations((values) =>
+                    values.filter((c) => c.id !== chatID),
+                  );
+                  setChatID(null);
+                }}
+              />
               <Button
                 icon={X}
                 title="收起对话"
                 aria-label="收起对话"
                 onClick={() => setChatID(null)}
-              />
-            </div>
-            <div className="chat-profile">
-              <button
-                onClick={() => setChatOptions(!chatOptions)}
-                title="切换智能体与模型"
-              >
-                {conversation.profile.name} <ChevronDown size={12} />
-              </button>
-              <small>{conversation.profile.model || "默认模型"}</small>
-              <Button
-                icon={Settings}
-                title="智能体设置"
-                onClick={() => setDialog("settings")}
               />
             </div>
             <blockquote className="reference">
@@ -1448,17 +1910,13 @@ function App() {
                 ))
               ) : (
                 <div className="chat-empty">
-                  <Sparkles size={28} />
-                  <p>从这一段，开始新的思考。</p>
-                  <small>引用内容会在发送时交给所选智能体。</small>
-                  {["解释这段内容", "帮我改写得更清晰", "提炼核心观点"].map(
-                    (text) => (
-                      <button key={text} onClick={() => setQuestion(text)}>
-                        {text}
-                        <ChevronRight size={14} />
-                      </button>
-                    ),
-                  )}
+                  <p>问问这段内容…</p>
+                </div>
+              )}
+              {isMissing(conversation.profile, discoveries) && (
+                <div className="chat-error">
+                  此智能体未安装或命令路径已失效。历史对话已保留。
+                  <Button onClick={() => openSettings()}>配置智能体</Button>
                 </div>
               )}
               {conversation.error && (
@@ -1470,6 +1928,18 @@ function App() {
             </div>
             {chatOptions && (
               <div className="chat-options">
+                {codexProfile && (
+                  <Button
+                    disabled={conversation.busy}
+                    onClick={() => {
+                      setThreadSource({ ...conversation, anchor: chatAnchor });
+                      setChatOptions(false);
+                      setDialog("codex-threads");
+                    }}
+                  >
+                    引用到 Codex 会话…
+                  </Button>
+                )}
                 <label>
                   智能体
                   <select
@@ -1482,6 +1952,7 @@ function App() {
                       const c = {
                         ...conversation,
                         id: crypto.randomUUID(),
+                        persisted: config.memoryEnabled !== false,
                         profile: { ...profile },
                         messages: [],
                         busy: false,
@@ -1493,7 +1964,14 @@ function App() {
                       setConfig((v) => ({ ...v, selectedAgent: profile.id }));
                     }}
                   >
-                    {config.profiles.map((p) => (
+                    {!availableAgents.some(
+                      (p) => p.id === conversation.profile.id,
+                    ) && (
+                      <option value={conversation.profile.id} disabled>
+                        {conversation.profile.name} · 不可用
+                      </option>
+                    )}
+                    {availableAgents.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.name}
                       </option>
@@ -1511,6 +1989,7 @@ function App() {
                       const c = {
                         ...conversation,
                         id: crypto.randomUUID(),
+                        persisted: config.memoryEnabled !== false,
                         profile: {
                           ...conversation.profile,
                           model: e.target.value,
@@ -1576,6 +2055,7 @@ function App() {
                         const c = {
                           ...conversation,
                           id: crypto.randomUUID(),
+                          persisted: config.memoryEnabled !== false,
                           profile,
                           messages: [],
                           date: new Date().toISOString(),
@@ -1689,50 +2169,60 @@ function App() {
                     icon={ArrowUp}
                     className="primary"
                     aria-label="发送提问"
-                    disabled={!question.trim() || conversation.needsRefresh}
+                    disabled={
+                      !question.trim() ||
+                      conversation.needsRefresh ||
+                      isMissing(conversation.profile, discoveries)
+                    }
                     onClick={send}
                   />
                 )}
               </div>
             </div>
-          </aside>
+          </AnchoredLayer>
         )}
       </div>
-      <footer className="status">
-        <span>
-          <Check size={13} />
-          {dirty ? "草稿已自动保留 · 尚未保存到文件" : "已保存"}
-          {doc.path && (
-            <span className="status-path" title={doc.path}>
-              {doc.path}
-            </span>
-          )}
-        </span>
-        <div>
-          <button
-            onClick={() =>
-              safely(async () => {
-                setHistory(await api("history", doc));
-                setDialog("history");
-              })
-            }
-          >
-            <History size={13} />
-            版本历史
-          </button>
-          <span>Markdown</span>
-          <span className="accent">
-            UTF-8 · {doc.text.includes("\r\n") ? "CRLF" : "LF"}
+      {!focus && (
+        <footer className="status">
+          <span>
+            <Check size={13} />
+            {dirty ? "草稿已自动保留 · 尚未保存到文件" : "已保存"}
+            {doc.path && (
+              <span className="status-path" title={doc.path}>
+                {doc.path}
+              </span>
+            )}
           </span>
-          <span>{doc.text.replace(/\s/g, "").length} 字符</span>
-          <span>{doc.text.split("\n").length} 行</span>
-        </div>
-        {focus && (
-          <Button icon={ArrowLeft} onClick={() => setFocus(false)}>
-            退出专注
-          </Button>
-        )}
-      </footer>
+          <div>
+            <button
+              onClick={() =>
+                safely(async () => {
+                  setHistory(await api("history", doc));
+                  setDialog("history");
+                })
+              }
+            >
+              <History size={13} />
+              版本历史
+            </button>
+            <span>Markdown</span>
+            <span className="accent">
+              UTF-8 · {doc.text.includes("\r\n") ? "CRLF" : "LF"}
+            </span>
+            <span>{doc.text.replace(/\s/g, "").length} 字符</span>
+            <span>{doc.text.split("\n").length} 行</span>
+          </div>
+        </footer>
+      )}
+      {focus && config.mode !== "read" && (
+        <Button
+          className="focus-exit"
+          icon={ArrowLeft}
+          onClick={() => setFocus(false)}
+        >
+          退出专注
+        </Button>
+      )}
       {notice && (
         <div className="toast" role="status">
           {notice}
@@ -1743,13 +2233,18 @@ function App() {
           Modal={Modal}
           Button={Button}
           config={config}
+          initialPage={settingsPage}
+          discoveries={discoveries}
+          onDiscover={setDiscoveries}
+          conversations={conversations}
+          onConversationsChange={setConversations}
           onChange={setConfig}
           safely={safely}
           toast={toast}
           onClose={() => setDialog(null)}
         />
       )}
-      {dialog === "codex-threads" && codexProfile && selection && (
+      {dialog === "codex-threads" && codexProfile && threadSource && (
         <ThreadPicker
           profile={codexProfile}
           Modal={Modal}
@@ -1758,22 +2253,26 @@ function App() {
           onClose={() => setDialog(null)}
           onSelect={(thread, messages) => {
             const c = {
-              id: crypto.randomUUID(),
-              docID: doc.id,
-              path: doc.path,
-              name: thread.name || thread.preview || doc.name,
-              reference: {
-                text: selection.text,
-                path: doc.path,
-                line: selection.line,
-              },
+              id: threadSource.messages.length
+                ? crypto.randomUUID()
+                : threadSource.id,
+              persisted: config.memoryEnabled !== false,
+              docID: threadSource.docID,
+              path: threadSource.path,
+              name: thread.name || thread.preview || threadSource.name,
+              reference: { ...threadSource.reference },
               profile: { ...codexProfile },
               threadId: thread.id,
               messages,
               date: new Date().toISOString(),
               busy: false,
             };
-            setConversations((values) => [...values, c]);
+            setConversations((values) =>
+              values.some((value) => value.id === c.id)
+                ? values.map((value) => (value.id === c.id ? c : value))
+                : [...values, c],
+            );
+            setChatAnchor(threadSource.anchor);
             setChatID(c.id);
             setSelection(null);
             setDialog(null);
@@ -1785,6 +2284,84 @@ function App() {
         <Modal title="阅读排版" onClose={() => setDialog(null)}>
           <Typography config={config} onChange={setConfig} />
         </Modal>
+      )}
+      {dialog === "quick-open" && (
+        <Modal title="快速打开" onClose={() => setDialog(null)}>
+          <div className="command-search">
+            <Search size={18} />
+            <input
+              autoFocus
+              aria-label="快速打开文件"
+              placeholder="搜索工作区或最近文件…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+          <div className="commands">
+            {[
+              ...new Set([
+                ...(folder?.files || []).map((f) => f.path),
+                ...recent,
+              ]),
+            ]
+              .filter((file) =>
+                file.toLowerCase().includes(query.toLowerCase()),
+              )
+              .map((file) => (
+                <button
+                  key={file}
+                  onClick={() => {
+                    setDialog(null);
+                    safely(async () => addOpened(await api("open", file)));
+                  }}
+                >
+                  <FileText size={14} />
+                  <span>{file.split(/[\\/]/).pop()}</span>
+                  <small title={file}>{file}</small>
+                </button>
+              ))}
+          </div>
+          <Button
+            icon={FolderOpen}
+            onClick={() => {
+              setDialog(null);
+              openFile();
+            }}
+          >
+            打开文件…
+          </Button>
+        </Modal>
+      )}
+      {dialog === "more" && (
+        <ActionPopover
+          title="更多操作"
+          anchor={menuAnchor}
+          onClose={() => setDialog(null)}
+        >
+          <div className="commands">
+            {commands.map(([label, key, action]) => (
+              <button
+                key={label}
+                onClick={() => {
+                  setDialog(null);
+                  action();
+                }}
+              >
+                <span>{label}</span>
+                <kbd>{key}</kbd>
+              </button>
+            ))}
+            <button
+              onClick={() => {
+                setDialog(null);
+                setSidebar("chats");
+              }}
+            >
+              <span>对话</span>
+              <MessageSquare size={14} />
+            </button>
+          </div>
+        </ActionPopover>
       )}
       {dialog === "commands" && (
         <Modal title="你想做什么？" onClose={() => setDialog(null)}>
@@ -1817,10 +2394,11 @@ function App() {
         </Modal>
       )}
       {dialog === "export" && (
-        <Modal title="导出文章" onClose={() => setDialog(null)}>
-          <p className="modal-description">
-            图表、公式和本地图片会随文章一起导出。
-          </p>
+        <ActionPopover
+          title="导出文章"
+          anchor={menuAnchor}
+          onClose={() => setDialog(null)}
+        >
           <div className="export-options">
             <Button
               icon={Code}
@@ -1841,39 +2419,70 @@ function App() {
               PDF · A4 文档
             </Button>
           </div>
-        </Modal>
+        </ActionPopover>
       )}
       {dialog === "history" && (
-        <Modal title="本地版本历史" onClose={() => setDialog(null)} wide>
+        <Modal
+          title="本地版本历史"
+          onClose={() => setDialog(null)}
+          wide
+          className="history-modal"
+        >
           <p className="modal-description">
-            每次保存保留一份快照，最多 30 个版本。恢复后可检查并重新保存。
+            {doc.name} · 每次保存保留一份快照，最多 30 个版本。
           </p>
-          {history.length ? (
-            <div className="history-list">
-              {history.map((entry) => (
-                <div key={entry.id}>
-                  <div>
+          {historyEntry ? (
+            <div className="history-layout">
+              <nav aria-label="保存的版本">
+                {history.map((entry) => (
+                  <button
+                    key={entry.id}
+                    className={entry.id === historyEntry.id ? "selected" : ""}
+                    onClick={() => setHistoryID(entry.id)}
+                  >
                     <strong>
                       {new Date(entry.date).toLocaleString("zh-CN")}
                     </strong>
-                    <small>{entry.text.length} 字符</small>
-                    <Button
-                      onClick={() => {
-                        updateDoc({ text: entry.text });
-                        setDialog(null);
-                        toast("已恢复到编辑器，保存后写入文件");
-                      }}
-                    >
-                      恢复到编辑器
-                    </Button>
-                  </div>
-                  <pre>{entry.text.slice(0, 400)}</pre>
-                </div>
-              ))}
+                    <small>
+                      {entry.text.length} 字符 ·{" "}
+                      {entry.text.includes("\r\n") ? "CRLF" : "LF"}
+                    </small>
+                  </button>
+                ))}
+              </nav>
+              <section>
+                <header>
+                  <span>
+                    {new Date(historyEntry.date).toLocaleString("zh-CN")}
+                  </span>
+                  <small>{historyEntry.text.length} 字符</small>
+                </header>
+                <pre>
+                  {historyEntry.text.slice(0, 200000)}
+                  {historyEntry.text.length > 200000
+                    ? "\n\n… 预览已截断，恢复时使用完整版本。"
+                    : ""}
+                </pre>
+              </section>
             </div>
           ) : (
             <p className="empty">首次保存后，版本会出现在这里。</p>
           )}
+          <div className="dialog-actions">
+            <p className="muted">恢复后可检查并重新保存。</p>
+            <Button onClick={() => setDialog(null)}>取消</Button>
+            <Button
+              className="primary"
+              disabled={!historyEntry}
+              onClick={() => {
+                updateDoc({ text: historyEntry.text });
+                setDialog(null);
+                toast("已恢复到编辑器，保存后写入文件");
+              }}
+            >
+              恢复到编辑器
+            </Button>
+          </div>
         </Modal>
       )}
       {confirmClose && (
@@ -1899,7 +2508,10 @@ function App() {
                   safely(async () => {
                     await api(
                       "conversations-save",
-                      current.current.conversations,
+                      memoriesForSaving(
+                        current.current.conversations,
+                        current.current.config,
+                      ),
                     );
                     await api("quit-ready", session());
                   })

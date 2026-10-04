@@ -16,6 +16,7 @@ const channels = [
   "agent-start",
   "agent-models",
   "agent-discover",
+  "agent-presets",
   "codex-threads",
   "codex-history",
   "codex-copy",

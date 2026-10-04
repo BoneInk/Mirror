@@ -92,14 +92,21 @@ marked.use({
     },
   ],
 });
-export function renderMarkdown(text, documentPath) {
+export function renderMarkdown(
+  text,
+  documentPath,
+  preserveSingleLineBreaks = false,
+) {
   footnotes = new Map(
     [...text.matchAll(/^\[\^([^\]\n]+)\]:\s*(.+)$/gm)].map((match) => [
       match[1],
       match[2],
     ]),
   );
-  const tokens = marked.lexer(text);
+  const tokens = marked.lexer(text, {
+    ...marked.defaults,
+    breaks: !!preserveSingleLineBreaks,
+  });
   let line = 0;
   const output = tokens
     .map((token) => {
@@ -108,7 +115,10 @@ export function renderMarkdown(text, documentPath) {
       const single = [token];
       single.links = tokens.links;
       const fragment = document.createElement("template");
-      fragment.innerHTML = marked.parser(single);
+      fragment.innerHTML = marked.parser(single, {
+        ...marked.defaults,
+        breaks: !!preserveSingleLineBreaks,
+      });
       for (const node of fragment.content.children) {
         node.dataset.sourceLine = start;
         node.dataset.sourceEnd = Math.max(start + 1, line);
