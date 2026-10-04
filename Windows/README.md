@@ -1,8 +1,14 @@
 # Mirror for Windows · 1.3.2
 
-[下载安装版 / 便携版](https://github.com/BoneInk/Mirror/releases/tag/v1.3.2) · Windows 10 / 11 · x64。
+[安装版](https://github.com/BoneInk/Mirror/releases/download/v1.3.2/Mirror-1.3.2-windows-x64-setup.exe) · [便携版](https://github.com/BoneInk/Mirror/releases/download/v1.3.2/Mirror-1.3.2-windows-x64-portable.exe) · [更新说明](https://github.com/BoneInk/Mirror/releases/tag/v1.3.2) · [SHA-256 校验](https://github.com/BoneInk/Mirror/releases/download/v1.3.2/SHA256SUMS.txt)
 
-Windows 项目使用 Electron 44、React 19 和 Vite 7，按 macOS 1.3.0 build 13 的代码与截图同步功能和 UI。保留折页 M 图标、纸张画布、暖色强调、标签导航和阅读留白，窗口控制与快捷键适配 Windows。
+支持 Windows 10 / 11 x64。Windows 项目使用 Electron 44、React 19 和 Vite 7，按 macOS 源码对齐主要界面与交互。保留折页 M 图标、纸张画布、暖色强调、标签导航和阅读留白，窗口控制与快捷键适配 Windows。
+
+## 开始使用
+
+运行安装版 `.exe`，或直接打开便携版。在「设置 → 智能体」配置已安装的 CLI 或服务连接，再打开 Markdown，圈选内容并点击「提问」。`Enter` 发送，`Ctrl Enter` 或 `Shift Enter` 换行，`Esc` 收起对话。
+
+圈选提示只显示「提问」，位于选区末端附近；松开后移动鼠标不会改变位置，滚动或调整窗口时自动重新定位。要继续已有 Codex 会话，展开对话顶部的智能体菜单，选择「引用到 Codex 会话…」，预览历史后点击「在 Mirror 继续原会话」。续聊前需退出 Codex 桌面。
 
 ## 界面
 
@@ -11,6 +17,8 @@ Windows 项目使用 Electron 44、React 19 和 Vite 7，按 macOS 1.3.0 build 1
 ![Windows 阅读排版](docs/windows-reader-sepia.png)
 
 ![Windows 选区对话](docs/windows-chat.png)
+
+![Windows 圈选后只显示提问](docs/windows-selection.png)
 
 ## 功能
 
