@@ -1,4 +1,4 @@
-# Windows 1.3.1 验收记录
+# Windows 验收记录
 
 日期：2026-10-01。平台：Windows 11 Pro x64，系统 10.0.26300，Node.js 22.22.1，Electron 44.5.1。同步基线为 macOS `3d85eed`（1.3.0 build 13）。本目录截图来自 Windows Electron 实机。
 
@@ -47,4 +47,16 @@ Windows 文件浏览限 Markdown/纯文本，尚未包含 macOS Quick Look 的�
 
 本地安装版与便携版位于 `Windows/release/ui-parity/`，没有覆盖原发布产物。最新打包后逐字节核对 190 个主进程与 renderer/资源文件，使用隔离数据目录启动打包后的 `Mirror.exe`，确认编辑器加载、圈选提示正向/反向定位及鼠标移开后位置稳定。新包的校验和在该目录的 `SHA256SUMS.txt`。
 
-这部分修改未发布到 GitHub Release；上面的 1.3.1 文件大小与哈希仍对应原发布产物。
+这部分修改作为 Windows 1.3.2 发布；上面的 1.3.1 文件大小与哈希仍对应原发布产物。
+
+## 2026-10-04 Windows 1.3.2 发布验收
+
+- `npm test`：16 项通过；`npm run test:ui`：16 项通过（33.7 秒）；生产构建通过。
+- 安装版与便携版的产品/文件版本为 1.3.2，均未签名。
+- 190 个打包的主进程、renderer 与资源文件和验收构建逐字节一致；隔离数据目录启动打包后的应用，验证应用版本、关于页版本、单个“提问”按钮、反向选区定位与鼠标移开后位置稳定。
+- 产物位于 `Windows/release/v1.3.2/`，GitHub Release 为 `v1.3.2`；仅发布 Windows x64。
+
+| 文件 | 字节 | SHA-256 |
+| --- | ---: | --- |
+| Mirror-1.3.2-windows-x64-portable.exe | 114575860 | 3338bad050af39b8e76a1edca030659bb789e02871c429570a10ca64a5bd94c0 |
+| Mirror-1.3.2-windows-x64-setup.exe | 114867902 | 341e3d5e5053c006e25561951fb5db9027b10428c0e1450a12c363b42a6989df |

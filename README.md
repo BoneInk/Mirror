@@ -48,6 +48,6 @@ bash scripts/build-dmg.sh --skip-build
 
 ## Windows 版本
 
-[下载 Windows 1.3.1](https://github.com/BoneInk/Mirror/releases/tag/v1.3.1) · Windows 10 / 11 · x64 安装版 / 便携版。
+[下载 Windows 1.3.2](https://github.com/BoneInk/Mirror/releases/tag/v1.3.2) · Windows 10 / 11 · x64 安装版 / 便携版。
 
 [Windows 桌面项目](Windows/README.md) 同步 macOS 的纸张画布、九套主题、阅读排版、Mermaid 缩放与外框调整、工作区搜索和文件变化通知，支持 Codex 原会话续聊、Smartwork、WorkBuddy 与多种原生 CLI。详见 Windows 文档与验收记录。

@@ -46,6 +46,6 @@ Outputs are in `dist/`. Regression checks are in `scripts/test-*.sh`.
 
 ## Windows edition
 
-[Download Windows 1.3.1](https://github.com/BoneInk/Mirror/releases/tag/v1.3.1) · Windows 10 / 11 · x64 installer and portable editions.
+[Download Windows 1.3.2](https://github.com/BoneInk/Mirror/releases/tag/v1.3.2) · Windows 10 / 11 · x64 installer and portable editions.
 
 The [Windows desktop project](Windows/README.md) aligns the paper canvas, nine themes, typography, interactive Mermaid frames, workspace search and external-file notifications with macOS. It supports existing Codex threads, Smartwork, WorkBuddy and native agent CLIs. See the Windows README for setup, validation and platform-specific differences.

@@ -1,6 +1,6 @@
-# Mirror for Windows · 1.3.1
+# Mirror for Windows · 1.3.2
 
-[下载安装版 / 便携版](https://github.com/BoneInk/Mirror/releases/tag/v1.3.1) · Windows 10 / 11 · x64。
+[下载安装版 / 便携版](https://github.com/BoneInk/Mirror/releases/tag/v1.3.2) · Windows 10 / 11 · x64。
 
 Windows 项目使用 Electron 44、React 19 和 Vite 7，按 macOS 1.3.0 build 13 的代码与截图同步功能和 UI。保留折页 M 图标、纸张画布、暖色强调、标签导航和阅读留白，窗口控制与快捷键适配 Windows。
 
@@ -89,6 +89,6 @@ Windows 查找 PATH、`%APPDATA%\npm` 和用户本地 bin，优先选择 `.exe` 
 
 ## 验收与平台差异
 
-当前源码在 Windows 实机完成构建、15 项单元检查与 14 项 Electron 界面回归。1.3.1 原发布验收另包含本机 Codex CLI 模型列表查询。智能体生成使用本机协议 fixture，未向真实模型发送问题。详细结果见 [验收记录](docs/validation.md)。
+当前源码在 Windows 实机完成构建、16 项单元检查与 16 项 Electron 界面回归。1.3.1 原发布验收另包含本机 Codex CLI 模型列表查询。智能体生成使用本机协议 fixture，未向真实模型发送问题。详细结果见 [验收记录](docs/validation.md)。
 
 Windows 仍有平台差异：文件浏览限 Markdown 与纯文本，没有 macOS Quick Look 的图片/PDF/二进制预览；桌面草稿预填改为复制引用；字体使用 Windows 本机字体。Markdown 清理助手、完整多行脚注与 macOS 原生菜单尚未移植。窗口控件、系统字体和文件选择器沿用 Windows。工作区最多 6 层 / 2000 个文档，文本文件上限 10 MB；不递归浏览符号链接。本次发布不包含新的 macOS DMG 或 ARM64 Windows 安装包。
