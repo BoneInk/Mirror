@@ -6,12 +6,14 @@ final class ReleaseProtocol: URLProtocol {
     static var payload = Data()
     static var responseCode = 200
     static var requests = 0
+    static var manifest: Data?
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         Self.requests += 1
-        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: Self.responseCode, httpVersion: "HTTP/1.1", headerFields: nil)!, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Self.payload)
+        let manifest = request.url == GitHubUpdateClient.manifestURL ? Self.manifest : nil
+        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: manifest == nil ? Self.responseCode : 200, httpVersion: "HTTP/1.1", headerFields: nil)!, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: manifest ?? Self.payload)
         client?.urlProtocolDidFinishLoading(self)
     }
     override func stopLoading() {}
@@ -58,6 +60,13 @@ Task { @MainActor in
         ReleaseProtocol.responseCode = 403
         await optedOut.check()
         precondition(optedOut.error != nil && !optedOut.busy)
+        precondition(optedOut.error!.contains("403"))
+        ReleaseProtocol.manifest = try JSONSerialization.data(withJSONObject: release("v1.10.0"))
+        await optedOut.check()
+        precondition(optedOut.error == nil && optedOut.availableVersion == "v1.10.0")
+        ReleaseProtocol.manifest = try JSONSerialization.data(withJSONObject: release("v9.0.0", prerelease: true))
+        await optedOut.check()
+        precondition(optedOut.error != nil)
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("MirrorUpdateSmoke-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }

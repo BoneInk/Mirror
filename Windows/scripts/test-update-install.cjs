@@ -22,7 +22,7 @@ async function main() {
   const powershell = path.join(windows, "System32/WindowsPowerShell/v1.0/powershell.exe");
   const fixture = path.join(root, "old-Mirror.exe");
   const source = path.join(root, "fixture.cs");
-  await fs.writeFile(source, `using System; using System.Reflection; [assembly:AssemblyProduct("Mirror")] [assembly:AssemblyFileVersion("1.0.0.0")] [assembly:AssemblyInformationalVersion("1.0.0")] class Program { static void Main() { System.Threading.Thread.Sleep(30000); } }`);
+  await fs.writeFile(source, `using System; using System.Reflection; [assembly:AssemblyProduct("Mirror")] [assembly:AssemblyFileVersion("1.0.0.0")] [assembly:AssemblyInformationalVersion("1.0.0.0")] class Program { static void Main() { System.Threading.Thread.Sleep(30000); } }`);
   const compiled = await run(path.join(windows, "Microsoft.NET/Framework64/v4.0.30319/csc.exe"), ["/nologo", "/target:winexe", `/out:${fixture}`, source]);
   assert.equal(compiled.code, 0, compiled.output);
   try {

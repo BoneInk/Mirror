@@ -4,6 +4,7 @@ const crypto = require("node:crypto");
 const { spawn } = require("node:child_process");
 
 const RELEASES = "https://api.github.com/repos/BoneInk/Mirror/releases?per_page=100";
+const MANIFEST = "https://github.com/BoneInk/Mirror/releases/latest/download/Mirror-update.json";
 function version(value) {
   if (typeof value !== "string" || !/^v?\d+\.\d+\.\d+(?:\.\d+)?$/.test(value)) return null;
   const parts = value.replace(/^v/, "").split(".").map(Number);
@@ -51,13 +52,19 @@ $armed = ${literal(marker)}
 $restart = ${literal(restart)}
 $result = ${literal(result)}
 $backedUp = $false
+function Test-MirrorVersion([string] $actual, [string] $expected) {
+  if ($actual -notmatch '^\\d+\\.\\d+\\.\\d+(?:\\.\\d+)?$' -or $expected -notmatch '^\\d+\\.\\d+\\.\\d+(?:\\.\\d+)?$') { return $false }
+  if ($actual.Split('.').Count -eq 3) { $actual += '.0' }
+  if ($expected.Split('.').Count -eq 3) { $expected += '.0' }
+  return ([version] $actual) -eq ([version] $expected)
+}
 Wait-Process -Id ${Number(parentPID)} -ErrorAction SilentlyContinue
 if (!(Test-Path -LiteralPath $armed)) { exit 0 }
 try {
   $package = (Get-Item -LiteralPath $installer).VersionInfo
-  if ($package.ProductName -ne 'Mirror' -or $package.ProductVersion -ne ${literal(nextVersion)}) { throw 'Invalid Mirror installer identity' }
+  if ($package.ProductName -ne 'Mirror' -or !(Test-MirrorVersion $package.ProductVersion ${literal(nextVersion)})) { throw 'Invalid Mirror installer identity' }
   $current = (Get-Item -LiteralPath $target).VersionInfo.ProductVersion
-  if ($current -ne ${literal(currentVersion)}) { exit 0 }
+  if (!(Test-MirrorVersion $current ${literal(currentVersion)})) { exit 0 }
   ${portable ? `Move-Item -LiteralPath $target -Destination $backup
   $backedUp = $true
   Copy-Item -LiteralPath $installer -Destination $target` : `Copy-Item -LiteralPath $folder -Destination $backup -Recurse
@@ -65,7 +72,7 @@ try {
   $process = Start-Process -FilePath $installer -ArgumentList ('/S /currentuser /D=' + $folder) -Wait -PassThru
   if ($process.ExitCode -ne 0) { throw 'Installer failed' }`}
   $installedVersion = (Get-Item -LiteralPath $target).VersionInfo.ProductVersion
-  if ($installedVersion -ne ${literal(nextVersion)}) { throw ('Installed version does not match: ' + $installedVersion) }
+  if (!(Test-MirrorVersion $installedVersion ${literal(nextVersion)})) { throw ('Installed version does not match: ' + $installedVersion) }
   Remove-Item -LiteralPath $backup -Recurse -Force
   $backedUp = $false
   Remove-Item -LiteralPath $armed -Force
@@ -116,8 +123,15 @@ class UpdateManager {
       const saved = await this.store.read("update-check", {});
       if (automatic && Date.now() - (saved.checkedAt || 0) < 86400000) return this.state;
       this.emit({ error: null, status: "正在检查更新…" });
-      const releases = await this.json(RELEASES);
-      const release = selectRelease(releases, this.arch, !!this.portablePath);
+      let release;
+      try {
+        release = selectRelease(await this.json(RELEASES), this.arch, !!this.portablePath);
+      } catch (apiError) {
+        try {
+          release = selectRelease([await this.json(MANIFEST)], this.arch, !!this.portablePath);
+          if (!release) throw apiError;
+        } catch { throw apiError; }
+      }
       if (!release) throw new Error("没有找到适合此 Windows 架构的安装包。");
       await this.store.write("update-check", { checkedAt: Date.now() });
       this.release = compare(release.tag_name, this.currentVersion) > 0 ? release : null;

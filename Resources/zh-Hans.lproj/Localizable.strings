@@ -325,3 +325,4 @@
 
 "Could not preserve drafts. Update restart was cancelled." = "无法保留草稿，已取消更新重启。";
 "The previous automatic installation failed. Please retry or open the installer." = "上次自动安装失败，请重试或打开安装包手动更新。";
+"GitHub returned HTTP %d. Please try again later." = "GitHub 返回 HTTP %d，请稍后重试。";

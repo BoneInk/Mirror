@@ -7,8 +7,8 @@
 
 | 平台 | 当前版本 | 下载 | 系统要求 |
 | --- | --- | --- | --- |
-| macOS | 1.3.5 | [DMG 与更新说明](https://github.com/BoneInk/Mirror/releases/tag/v1.3.5) | macOS 14+ · Intel / Apple Silicon |
-| Windows | 1.3.5 | [安装版](https://github.com/BoneInk/Mirror/releases/download/v1.3.5/Mirror-1.3.5-windows-x64-setup.exe) · [便携版](https://github.com/BoneInk/Mirror/releases/download/v1.3.5/Mirror-1.3.5-windows-x64-portable.exe) · [更新说明](https://github.com/BoneInk/Mirror/releases/tag/v1.3.5) | Windows 10 / 11 · x64 |
+| macOS | 1.3.6 | [DMG 与更新说明](https://github.com/BoneInk/Mirror/releases/tag/v1.3.6) | macOS 14+ · Intel / Apple Silicon |
+| Windows | 1.3.6 | [安装版](https://github.com/BoneInk/Mirror/releases/download/v1.3.6/Mirror-1.3.6-windows-x64-setup.exe) · [便携版](https://github.com/BoneInk/Mirror/releases/download/v1.3.6/Mirror-1.3.6-windows-x64-portable.exe) · [更新说明](https://github.com/BoneInk/Mirror/releases/tag/v1.3.6) | Windows 10 / 11 · x64 |
 
 ## 为什么做Mirro
 本人在工作中，经常需要阅读各种Markdown文档，特别是AI Coding之后，与各类Agent的交互和成果核对，更多依赖于阶段性的Markdown文档产出，因此对于一款好用的本地Markdown编辑器的需求更显得急迫。
@@ -42,11 +42,11 @@
 ## 开始使用
 
 - **macOS：** 下载 DMG，将 Mirror 拖入 Applications。
-- **Windows：** 运行安装版 `.exe`，或直接打开便携版。文件校验见 [SHA256SUMS.txt](https://github.com/BoneInk/Mirror/releases/download/v1.3.5/SHA256SUMS.txt)。
+- **Windows：** 运行安装版 `.exe`，或直接打开便携版。文件校验见 [SHA256SUMS.txt](https://github.com/BoneInk/Mirror/releases/download/v1.3.6/SHA256SUMS.txt)。
 
 ### 自动更新
 
-macOS 与 Windows 默认每天检查 GitHub Releases，后台下载并验证 SHA-256，正常退出后安装，下次打开即为新版。更新不会打断写作，也可以在设置中关闭自动更新、手动检查或立即重启更新；重启前会保留草稿。macOS 在“软件更新”设置页，Windows 在“关于 Mirror”中操作。首次升级到支持此功能的 v1.3.5 仍需手动安装；无写入权限的安装目录会保留已下载的安装包，供手动安装。
+macOS 与 Windows 默认每天检查 GitHub Releases；API 限流时读取 Release 中的更新清单，后台下载并验证 SHA-256，正常退出后安装，下次打开即为新版。更新不会打断写作，也可以在设置中关闭自动更新、手动检查或立即重启更新；重启前会保留草稿。macOS 在“软件更新”设置页，Windows 在“关于 Mirror”中操作。首次升级到支持此功能的 v1.3.6 仍需手动安装；无写入权限的安装目录会保留已下载的安装包，供手动安装。
 
 ### 圈选提问操作方式：
 打开 Markdown，选中文字后点击「提问」。提示会出现在选区末端附近，对话在引用旁打开。`Enter/Return` 发送，macOS 用 `⌘ Return` 换行，Windows 用 `Ctrl Enter` 换行，`Esc` 收起对话。
@@ -62,3 +62,15 @@ macOS 安装包使用 ad-hoc 签名，尚未完成 Apple 公证；Windows 安装
 
 首次打开若提示“Apple 无法验证 Mirror”，请先点“完成”，再到 **系统设置 → 隐私与安全性 → 仍要打开**，按提示确认。仅在确认安装包来自本项目 Release 且信任来源时操作。详见 [Apple 官方说明](https://support.apple.com/zh-cn/102445)。
 
+
+### 发布更新元数据
+
+上传两端安装包前，使用相同文件生成校验和与备用更新清单，并将输出一起上传到正式 Release：
+
+```bash
+python3 scripts/create-update-manifest.py --tag v1.3.6 \
+  dist/Mirror-1.3.6.dmg \
+  Windows/release/Mirror-1.3.6-windows-x64-setup.exe \
+  Windows/release/Mirror-1.3.6-windows-x64-portable.exe
+# 上传 dist/Mirror-update.json 和 dist/SHA256SUMS.txt
+```

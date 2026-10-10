@@ -50,8 +50,26 @@ enum SoftwareUpdateError: LocalizedError {
 struct GitHubUpdateClient {
     var session: URLSession = .shared
     static let releasesURL = URL(string: "https://api.github.com/repos/BoneInk/Mirror/releases?per_page=100")!
+    static let manifestURL = URL(string: "https://github.com/BoneInk/Mirror/releases/latest/download/Mirror-update.json")!
 
     func latestMacRelease() async throws -> GitHubRelease? {
+        do { return try await apiMacRelease() }
+        catch {
+            let apiError = error
+            do {
+                var request = URLRequest(url: Self.manifestURL)
+                request.timeoutInterval = 30
+                let (data, response) = try await session.data(for: request)
+                try Self.validate(response)
+                let release = try JSONDecoder().decode(GitHubRelease.self, from: data)
+                guard !release.draft, !release.prerelease, ReleaseVersion(release.tag_name) != nil,
+                      release.macInstaller != nil else { throw apiError }
+                return release
+            } catch { throw apiError }
+        }
+    }
+
+    private func apiMacRelease() async throws -> GitHubRelease? {
         var request = URLRequest(url: Self.releasesURL)
         request.timeoutInterval = 30
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
@@ -64,8 +82,11 @@ struct GitHubUpdateClient {
     }
 
     static func validate(_ response: URLResponse) throws {
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+        guard let http = response as? HTTPURLResponse else {
             throw SoftwareUpdateError.message("GitHub is unavailable. Please try again later.")
+        }
+        guard http.statusCode == 200 else {
+            throw SoftwareUpdateError.message(String(format: NSLocalizedString("GitHub returned HTTP %d. Please try again later.", comment: "Software update"), http.statusCode))
         }
     }
 

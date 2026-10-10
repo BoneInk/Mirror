@@ -1,6 +1,6 @@
-# Mirror for Windows · 1.3.5
+# Mirror for Windows · 1.3.6
 
-[安装版](https://github.com/BoneInk/Mirror/releases/download/v1.3.5/Mirror-1.3.5-windows-x64-setup.exe) · [便携版](https://github.com/BoneInk/Mirror/releases/download/v1.3.5/Mirror-1.3.5-windows-x64-portable.exe) · [更新说明](https://github.com/BoneInk/Mirror/releases/tag/v1.3.5) · [SHA-256 校验](https://github.com/BoneInk/Mirror/releases/download/v1.3.5/SHA256SUMS.txt)
+[安装版](https://github.com/BoneInk/Mirror/releases/download/v1.3.6/Mirror-1.3.6-windows-x64-setup.exe) · [便携版](https://github.com/BoneInk/Mirror/releases/download/v1.3.6/Mirror-1.3.6-windows-x64-portable.exe) · [更新说明](https://github.com/BoneInk/Mirror/releases/tag/v1.3.6) · [SHA-256 校验](https://github.com/BoneInk/Mirror/releases/download/v1.3.6/SHA256SUMS.txt)
 
 支持 Windows 10 / 11 x64。Windows 项目使用 Electron 44、React 19 和 Vite 7，按 macOS 源码对齐主要界面与交互。保留折页 M 图标、纸张画布、暖色强调、标签导航和阅读留白，窗口控制与快捷键适配 Windows。
 
@@ -12,7 +12,7 @@
 
 ## 自动更新
 
-默认每天检查 GitHub Releases，后台下载并校验 SHA-256。安装版静默更新，便携版替换原 EXE；都在正常退出后安装，下次打开即为新版。安装失败时恢复备份文件。首次升级到 v1.3.5 需手动安装，此后的版本可自动更新。
+默认每天检查 GitHub Releases，后台下载并校验 SHA-256。安装版静默更新，便携版替换原 EXE；都在正常退出后安装，下次打开即为新版。安装失败时恢复备份文件。首次升级到 v1.3.6 需手动安装，此后的版本可自动更新。
 
 在「设置 → 关于 Mirror」可关闭自动更新、手动检查或立即重启更新；立即重启会先保留草稿与会话。安装目录不可写时可打开下载好的安装包手动更新。
 

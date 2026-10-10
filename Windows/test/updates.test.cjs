@@ -71,6 +71,22 @@ test("daily throttling and failed request do not erase a recoverable retry", asy
   assert.match(broken.manager.state.error, /403/); assert.equal(broken.saved["update-check"], undefined);
   assert.ok(saved["update-check"]);
 });
+test("API rate limits fall back to a verified stable release manifest", async (t) => {
+  const { manager, launches } = await fixture(t, { fetcher: async (url) => {
+    if (url.includes("api.github.com")) return new Response("rate limited", { status: 403 });
+    if (url.endsWith("Mirror-update.json")) return Response.json(release());
+    return new Response(bytes);
+  } });
+  await manager.check(true);
+  assert.equal(manager.state.error, null);
+  assert.equal(manager.state.ready, true);
+  assert.equal(launches.length, 1);
+  const invalid = await fixture(t, { fetcher: async (url) => url.includes("api.github.com")
+    ? new Response("rate limited", { status: 403 }) : Response.json({ ...release(), prerelease: true }) });
+  await invalid.manager.check(true);
+  assert.match(invalid.manager.state.error, /403/);
+  assert.equal(invalid.launches.length, 0);
+});
 test("invalid checksum, truncated downloads and unexpected download origins never launch installers", async (t) => {
   for (const variant of ["digest", "truncated", "origin", "missing"]) {
     const candidate = release();
