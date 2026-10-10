@@ -875,14 +875,17 @@ test("preview selection tracks forward and backward DOM ranges, flips near the b
       .getBoundingClientRect();
     return [
       ...document.querySelectorAll(".preview-pane article p"),
-    ].findLastIndex((p) => {
-      const rect = p.getBoundingClientRect();
-      return (
-        rect.bottom < viewport.bottom && rect.bottom > viewport.bottom - 60
-      );
-    });
+    ].findIndex((p) => p.getBoundingClientRect().top >= viewport.bottom);
   });
   expect(bottomIndex).toBeGreaterThan(1);
+  await paragraphs.nth(bottomIndex).evaluate((p) => {
+    const viewport = document.querySelector(".preview-scroll");
+    const caret = document.createRange();
+    caret.setStart(p.lastChild, p.lastChild.length);
+    caret.collapse(true);
+    // Put the actual focus glyph near the bottom, independent of font metrics.
+    viewport.scrollTop += caret.getBoundingClientRect().bottom - (viewport.getBoundingClientRect().bottom - 4);
+  });
   await select(bottomIndex);
   await expect(toolbar).toHaveAttribute("data-placement", "top");
   await page.evaluate(() => window.getSelection().removeAllRanges());
