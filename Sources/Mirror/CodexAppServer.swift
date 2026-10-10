@@ -21,14 +21,24 @@ final class CodexAppServer {
     private var generation = UUID()
 
     static func executableURL() -> URL? {
-        let manager = FileManager.default
-        if let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex") {
-            let bundled = app.appendingPathComponent("Contents/Resources/codex")
-            if manager.isExecutableFile(atPath: bundled.path) { return bundled }
-        }
         let paths = (ProcessInfo.processInfo.environment["PATH"] ?? "").components(separatedBy: ":")
             + ["/opt/homebrew/bin", "/usr/local/bin", NSHomeDirectory() + "/.local/bin"]
-        return paths.filter { !$0.isEmpty }.map { URL(fileURLWithPath: $0).appendingPathComponent("codex") }
+        return executableURL(appURL: NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex"),
+                             searchPaths: paths)
+    }
+
+    static func executableURL(appURL: URL?, searchPaths: [String]) -> URL? {
+        let manager = FileManager.default
+        if let appURL {
+            // Resolve the app by bundle identifier: its display name and install location can vary.
+            // Desktop releases ship either a standalone CLI or the nested CodexCLI app.
+            let bundledPaths = ["Contents/Resources/codex",
+                                "Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+                                "Contents/Resources/codex-cli/bin/codex"]
+            if let bundled = bundledPaths.map({ appURL.appendingPathComponent($0) })
+                .first(where: { manager.isExecutableFile(atPath: $0.path) }) { return bundled }
+        }
+        return searchPaths.filter { !$0.isEmpty }.map { URL(fileURLWithPath: $0).appendingPathComponent("codex") }
             .first { manager.isExecutableFile(atPath: $0.path) }
     }
 
