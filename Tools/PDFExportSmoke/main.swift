@@ -41,7 +41,9 @@ if CommandLine.arguments.count > 1 {
     }
 }
 let pdf = try runExport("<h1>中文总览</h1><h3>重复标题</h3><p style='height:1800px'>Long content</p><h2>重复标题</h2><h6>深层目录</h6><h1>结束</h1>", name: "headings")
-let root = pdf.outlineRoot!
+guard let root = pdf.outlineRoot else {
+    fatalError("Saved PDF must retain its heading outline after reopening")
+}
 precondition(root.numberOfChildren == 2)
 let first = root.child(at: 0)!
 precondition(first.label == "中文总览" && first.numberOfChildren == 2)
@@ -70,7 +72,12 @@ let headingBounds = headingSelection.bounds(for: destination.page!)
 precondition(abs(destination.point.y - headingBounds.maxY) < 35, "Bookmark must land near its heading")
 let plain = try runExport("<p>No headings</p>", name: "plain")
 precondition(plain.outlineRoot == nil || plain.outlineRoot!.numberOfChildren == 0)
-print("PDF export smoke passed: hierarchy, Unicode, duplicates, skipped levels, long-page destinations, navigation, no headings")
+let linked = try runExport("<h1>Links</h1><p>Preserved body <a href='https://example.com/guide'>Guide</a></p>", name: "links")
+precondition(linked.outlineRoot?.child(at: 0)?.label == "Links")
+precondition(linked.page(at: 0)?.string?.contains("Preserved body Guide") == true)
+precondition(linked.page(at: 0)?.annotations.contains { $0.url?.absoluteString == "https://example.com/guide" } == true,
+             "Copying PDF pages must preserve link annotations")
+print("PDF export smoke passed: saved outlines, hierarchy, Unicode, duplicates, skipped levels, long-page destinations, navigation, no headings, body text, links")
 print(directory.path)
 
 }

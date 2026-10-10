@@ -7,7 +7,7 @@
 
 | 平台 | 当前版本 | 下载 | 系统要求 |
 | --- | --- | --- | --- |
-| macOS | 1.3.0 | [DMG 与更新说明](https://github.com/BoneInk/Mirror/releases/tag/v1.3.0) | macOS 14+ · Intel / Apple Silicon |
+| macOS | 1.3.3 | [DMG 与更新说明](https://github.com/BoneInk/Mirror/releases/tag/v1.3.3) | macOS 14+ · Intel / Apple Silicon |
 | Windows | 1.3.2 | [安装版](https://github.com/BoneInk/Mirror/releases/download/v1.3.2/Mirror-1.3.2-windows-x64-setup.exe) · [便携版](https://github.com/BoneInk/Mirror/releases/download/v1.3.2/Mirror-1.3.2-windows-x64-portable.exe) · [更新说明](https://github.com/BoneInk/Mirror/releases/tag/v1.3.2) | Windows 10 / 11 · x64 |
 
 ## 为什么做Mirro

@@ -8,7 +8,7 @@ A Markdown editor focused on simplicity, speed, and a pleasant interface, with a
 
 | Platform | Current version | Download | Requirements |
 | --- | --- | --- | --- |
-| macOS | 1.3.0 | [DMG and release notes](https://github.com/BoneInk/Mirror/releases/tag/v1.3.0) | macOS 14+ · Intel / Apple Silicon |
+| macOS | 1.3.3 | [DMG and release notes](https://github.com/BoneInk/Mirror/releases/tag/v1.3.3) | macOS 14+ · Intel / Apple Silicon |
 | Windows | 1.3.2 | [Installer](https://github.com/BoneInk/Mirror/releases/download/v1.3.2/Mirror-1.3.2-windows-x64-setup.exe) · [Portable](https://github.com/BoneInk/Mirror/releases/download/v1.3.2/Mirror-1.3.2-windows-x64-portable.exe) · [Release notes](https://github.com/BoneInk/Mirror/releases/tag/v1.3.2) | Windows 10 / 11 · x64 |
 
 ## Why I built Mirror

@@ -103,9 +103,20 @@ final class MarkdownFileExporter: NSObject, WKNavigationDelegate {
             self.webView.createPDF(configuration: configuration) { [weak self] result in
                 do {
                     let data = try result.get()
-                    guard let document = PDFDocument(data: data),
-                          document.pageCount > 0 else {
+                    guard let capturedDocument = PDFDocument(data: data),
+                          capturedDocument.pageCount > 0 else {
                         throw Self.exportError("WebKit 未生成有效的 PDF 页面（实际页数：\(PDFDocument(data: data)?.pageCount ?? 0)）。")
+                    }
+                    // PDFKit can omit outline-only changes when saving a
+                    // document loaded from WebKit, silently dropping bookmarks.
+                    // Copy the pages into a new document to force serialization.
+                    let document = PDFDocument()
+                    document.documentAttributes = capturedDocument.documentAttributes
+                    for index in 0..<capturedDocument.pageCount {
+                        guard let page = capturedDocument.page(at: index)?.copy() as? PDFPage else {
+                            throw Self.exportError("无法复制 PDF 页面。")
+                        }
+                        document.insert(page, at: index)
                     }
                     let pages = (0..<document.pageCount).compactMap { document.page(at: $0) }
                     let totalHeight = pages.reduce(CGFloat.zero) { $0 + $1.bounds(for: .mediaBox).height }

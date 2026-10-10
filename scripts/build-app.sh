@@ -16,14 +16,17 @@ if [[ "$BUILD_MODE" == "release" ]]; then
     swift build -c release \
       --triple "$ARCHITECTURE-apple-macosx14.0" \
       --scratch-path "$SCRATCH_DIR"
-    ARCH_BINARIES+=("$SCRATCH_DIR/$ARCHITECTURE-apple-macosx/release/Mirror")
+    BIN_DIR="$(swift build -c release \
+      --triple "$ARCHITECTURE-apple-macosx14.0" \
+      --scratch-path "$SCRATCH_DIR" --show-bin-path)"
+    ARCH_BINARIES+=("$BIN_DIR/Mirror")
   done
   mkdir -p "$PROJECT_DIR/.build-universal/release"
   xcrun lipo -create "${ARCH_BINARIES[@]}" -output "$PROJECT_DIR/.build-universal/release/Mirror"
   BUILT_EXECUTABLE="$PROJECT_DIR/.build-universal/release/Mirror"
 else
   swift build -c "$BUILD_MODE"
-  BUILT_EXECUTABLE="$PROJECT_DIR/.build/$BUILD_MODE/Mirror"
+  BUILT_EXECUTABLE="$(swift build -c "$BUILD_MODE" --show-bin-path)/Mirror"
 fi
 
 rm -rf "$APP_DIR"
