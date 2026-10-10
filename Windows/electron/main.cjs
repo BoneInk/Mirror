@@ -21,6 +21,7 @@ const {
   atomicWrite,
 } = require("./store.cjs");
 const { runTurn, endpoint } = require("./agents.cjs");
+const { UpdateManager } = require("./updates.cjs");
 const {
   searchWorkspace,
   resolveDocumentLink,
@@ -39,6 +40,7 @@ protocol.registerSchemesAsPrivileged([
 ]);
 let win,
   store,
+  updates,
   closing = false;
 const allowed = new Set();
 const jobs = new Map();
@@ -98,6 +100,7 @@ async function settings() {
     scrollSync: "smart",
     tabWidth: 2,
     wordWrap: true,
+    automaticallyUpdates: true,
   };
   const saved = await store.read("settings", defaults);
   const profiles = saved.profiles || [];
@@ -171,6 +174,21 @@ async function exportedHTML(html, dark) {
   return `<!doctype html><html lang="zh-CN"><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:"><title>Mirror 导出</title><style>${css}\nbody{color:${dark ? "#e9e4df" : "#302e2c"};background:${dark ? "#202120" : "#fff"};margin:0;font:17px/1.9 Georgia,'Noto Serif CJK SC','SimSun',serif}article{max-width:800px;margin:60px auto;padding:0 40px}h1,h2,h3{line-height:1.4}h1{font-size:2.2em}h2{border-bottom:1px solid #aaa4;padding-bottom:.4em}blockquote{border-left:3px solid #b95732;margin:24px 0;padding:10px 24px;background:#8881}pre{white-space:pre-wrap;background:#8881;padding:18px;border-radius:8px;font:13px/1.6 Consolas,monospace}code{font-family:Consolas,monospace}table{border-collapse:collapse;width:100%}td,th{padding:8px 12px;border:1px solid #aaa5}img,svg{max-width:100%}a{color:#b95732}.mermaid{text-align:center}.task-list-item{list-style:none}@media print{body{background:white;color:#222}article{margin:0;max-width:none;padding:0}pre,blockquote,tr,svg{break-inside:avoid}a{color:inherit}}</style><article>${html}</article></html>`;
 }
 function registerIPC() {
+  handle("update-state", () => updates.state);
+  handle("update-check", () => updates.check());
+  handle("update-download", () => updates.download());
+  handle("update-restart", async (session) => {
+    await store.write("session", session);
+    await updates.restart();
+    for (const job of jobs.values()) job.abort();
+    closing = true;
+    win.close();
+  });
+  handle("update-installer", async () => {
+    if (!updates.state.installer) throw new Error("安装包尚未下载。");
+    const error = await shell.openPath(updates.state.installer);
+    if (error) throw new Error(error);
+  });
   handle("bootstrap", async () => {
     const session = await store.read("session", { tabs: [] });
     for (const tab of session.tabs || []) {
@@ -349,6 +367,9 @@ function registerIPC() {
       delete profile.token;
     }
     await store.write("settings", config);
+    const changed = updates.enabled !== (config.automaticallyUpdates !== false);
+    await updates.preferences(config.automaticallyUpdates);
+    if (changed && updates.enabled && app.isPackaged) void updates.check(true);
   });
   handle("credential-save", async (id, token) => {
     if (
@@ -553,6 +574,12 @@ function createWindow() {
   if (process.env.MIRROR_DEV_URL) win.loadURL(process.env.MIRROR_DEV_URL);
   else win.loadFile(path.join(__dirname, "../dist/index.html"));
   win.webContents.on("did-finish-load", async () => {
+    await updates.preferences((await settings()).automaticallyUpdates);
+    try {
+      const error = await fs.readFile(path.join(updates.root, "last-install-error.txt"), "utf8");
+      updates.emit({ error: `上次自动安装失败，请重试或手动安装。${error}`, status: "自动安装未完成。" });
+    } catch { /* No prior installation failure. */ }
+    if (app.isPackaged) void updates.check(true);
     for (const file of process.argv
       .slice(1)
       .filter((x) => /\.(md|markdown|mdown|txt)$/i.test(x))) {
@@ -563,6 +590,7 @@ function createWindow() {
       }
     }
   });
+  win.on("focus", () => { if (app.isPackaged) void updates.check(true); });
 }
 if (process.env.MIRROR_TEST_DATA)
   app.setPath("userData", process.env.MIRROR_TEST_DATA);
@@ -582,8 +610,15 @@ else {
     if (win.isMinimized()) win.restore();
     win.focus();
   });
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     store = new Store(app.getPath("userData"));
+    updates = new UpdateManager({
+      store, root: path.join(app.getPath("userData"), "updates"), currentVersion: app.getVersion(),
+      portablePath: process.env.PORTABLE_EXECUTABLE_FILE,
+      fetcher: (url, options) => net.fetch(url, options),
+      notify: (state) => { if (win && !win.isDestroyed()) win.webContents.send("update-state", state); },
+    });
+    await updates.preferences((await settings()).automaticallyUpdates);
     protocol.handle("mirror-asset", async (request) => {
       try {
         return await net.fetch(
@@ -595,6 +630,8 @@ else {
     });
     registerIPC();
     createWindow();
+    const updateTimer = setInterval(() => { if (app.isPackaged) void updates.check(true); }, 3600000);
+    updateTimer.unref();
   });
   app.on("window-all-closed", () => {
     watcher.close();

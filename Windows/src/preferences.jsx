@@ -93,6 +93,8 @@ export function Preferences({
   onConversationsChange,
   Modal,
   Button,
+  updates,
+  onRestartUpdate,
 }) {
   const [page, setPage] = useState(initialPage);
   const [presets, setPresets] = useState([]);
@@ -631,6 +633,22 @@ export function Preferences({
                 <img src="./icon.png" alt="Mirror" />
                 <h3>Mirror for Windows</h3>
                 <p>{version} · 写作、阅读与对话</p>
+                <label className="check-field">
+                  <input type="checkbox" checked={config.automaticallyUpdates !== false}
+                    onChange={(e) => update({ automaticallyUpdates: e.target.checked })} />
+                  自动下载并安装更新
+                </label>
+                <p className="muted">每天检查 GitHub Releases，后台下载并校验，正常退出后安装。下次打开即为新版。</p>
+                <p role="status">{updates?.status}</p>
+                {updates?.availableVersion && <p>新版本：{updates.availableVersion}</p>}
+                {updates?.busy && <progress aria-label="更新进度" value={updates.progress ?? undefined} max="100" />}
+                {updates?.error && <p role="alert">{updates.error}</p>}
+                <div className="dialog-actions">
+                  <Button disabled={updates?.busy || updates?.ready} onClick={() => safely(() => api("update-check"))}>检查更新</Button>
+                  {updates?.availableVersion && !updates?.ready && <Button disabled={updates?.busy} onClick={() => safely(() => api("update-download"))}>下载更新</Button>}
+                  {updates?.ready && <Button onClick={onRestartUpdate}>立即重启更新</Button>}
+                  {updates?.installer && !updates?.ready && <Button onClick={() => safely(() => api("update-installer"))}>打开安装包</Button>}
+                </div>
                 <p className="muted">
                   纸张、主题、阅读工具、图表交互和智能体协议与 macOS
                   同步。草稿、文档版本与对话保留在本机。

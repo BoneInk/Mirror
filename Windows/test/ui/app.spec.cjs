@@ -26,6 +26,24 @@ test.afterEach(async () => {
   await stop();
   await fs.rm(root, { recursive: true });
 });
+test("update preferences persist and staged updates offer a restart action", async () => {
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await page.getByRole("tab", { name: "关于 Mirror", exact: true }).click();
+  const automatic = page.getByLabel("自动下载并安装更新");
+  await expect(automatic).toBeChecked();
+  await automatic.uncheck();
+  await expect.poll(async () => JSON.parse(await fs.readFile(path.join(root, "settings.json"), "utf8")).automaticallyUpdates).toBe(false);
+  await stop(); await launch();
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await page.getByRole("tab", { name: "关于 Mirror", exact: true }).click();
+  await expect(page.getByLabel("自动下载并安装更新")).not.toBeChecked();
+  await expect(page.getByRole("button", { name: "检查更新", exact: true })).toBeEnabled();
+  await application.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()[0].webContents.send("update-state", { ready: true, availableVersion: "v2.0.0", status: "更新已就绪，退出后自动安装。" });
+  });
+  await expect(page.getByRole("button", { name: "立即重启更新", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "检查更新", exact: true })).toBeDisabled();
+});
 test("offline Markdown, math, Mermaid, sanitized HTML and persisted view/theme/drafts", async () => {
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));

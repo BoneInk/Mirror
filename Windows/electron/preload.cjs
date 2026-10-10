@@ -25,6 +25,11 @@ const channels = [
   "external",
   "window",
   "quit-ready",
+  "update-state",
+  "update-check",
+  "update-download",
+  "update-restart",
+  "update-installer",
 ];
 contextBridge.exposeInMainWorld("mirror", {
   call: async (name, ...args) => {
@@ -43,6 +48,7 @@ contextBridge.exposeInMainWorld("mirror", {
         "folder-changed",
         "folder-opened",
         "document-error",
+        "update-state",
       ].includes(name)
     )
       throw new Error("不支持的事件。");

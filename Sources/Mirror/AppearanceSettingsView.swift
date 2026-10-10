@@ -3,6 +3,7 @@ import SwiftUI
 
 struct AppearanceSettingsView: View {
     @EnvironmentObject private var document: DocumentStore
+    @EnvironmentObject private var updates: SoftwareUpdateStore
 
     var body: some View {
         TabView {
@@ -16,6 +17,8 @@ struct AppearanceSettingsView: View {
                 .tabItem { Label("Typography", systemImage: "textformat") }
             EditorBehaviorSettingsView()
                 .tabItem { Label("Editor", systemImage: "slider.horizontal.3") }
+            SoftwareUpdateView(updates: updates)
+                .tabItem { Label("Software Update", systemImage: "arrow.down.circle") }
         }
         .padding(20)
         .frame(width: 720, height: 570)

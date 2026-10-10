@@ -398,6 +398,12 @@ function App() {
   const [discoveries, setDiscoveries] = useState([]);
   const [discovering, setDiscovering] = useState(true);
   const [settingsPage, setSettingsPage] = useState("agents");
+  const [updates, setUpdates] = useState(null);
+  useEffect(() => {
+    const off = window.mirror.on("update-state", setUpdates);
+    api("update-state").then(setUpdates).catch(() => {});
+    return off;
+  }, []);
   const [readerMenu, setReaderMenu] = useState(null);
   const [menuAnchor, setMenuAnchor] = useState(null);
   const showMenu = (event, name) => {
@@ -2194,6 +2200,7 @@ function App() {
             )}
           </span>
           <div>
+            {updates?.ready && <button onClick={() => openSettings("about")}>更新已就绪</button>}
             <button
               onClick={() =>
                 safely(async () => {
@@ -2241,6 +2248,12 @@ function App() {
           onChange={setConfig}
           safely={safely}
           toast={toast}
+          updates={updates}
+          onRestartUpdate={() => safely(async () => {
+            await api("conversations-save", memoriesForSaving(current.current.conversations, current.current.config));
+            await api("settings-save", current.current.config);
+            await api("update-restart", session());
+          })}
           onClose={() => setDialog(null)}
         />
       )}

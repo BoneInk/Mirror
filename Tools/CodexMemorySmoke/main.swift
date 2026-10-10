@@ -95,7 +95,7 @@ Task { @MainActor in
         if CommandLine.arguments.contains("--visual") {
             let settings = NSWindow(contentRect: NSRect(x: 100,y: 100,width: 760,height: 610), styleMask: [.titled], backing: .buffered, defer: false)
             settings.isReleasedWhenClosed = false
-            settings.contentView = NSHostingView(rootView: AppearanceSettingsView().environmentObject(document))
+            settings.contentView = NSHostingView(rootView: AppearanceSettingsView().environmentObject(document).environmentObject(SoftwareUpdateStore()))
             settings.makeKeyAndOrderFront(nil)
             try await Task.sleep(for: .milliseconds(600))
             try capture(settings, "memory-settings")

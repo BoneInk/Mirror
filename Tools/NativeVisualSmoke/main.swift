@@ -165,9 +165,15 @@ Task { @MainActor in
         document.selectTheme(.paper)
         let settings = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 610), styleMask: [.titled], backing: .buffered, defer: false)
         settings.isReleasedWhenClosed = false
-        settings.contentView = NSHostingView(rootView: AppearanceSettingsView().environmentObject(document))
+        settings.contentView = NSHostingView(rootView: AppearanceSettingsView().environmentObject(document).environmentObject(SoftwareUpdateStore()))
         settings.orderFront(nil)
         try await snapshot(settings, name: "settings")
+        let updateWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 430), styleMask: [.titled], backing: .buffered, defer: false)
+        updateWindow.isReleasedWhenClosed = false
+        updateWindow.contentView = NSHostingView(rootView: SoftwareUpdateView(updates: SoftwareUpdateStore()).environmentObject(document).padding(24).nativeDialog(theme: document.theme))
+        updateWindow.orderFront(nil)
+        try await snapshot(updateWindow, name: "software-update")
+        updateWindow.close()
         let palette = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 660, height: 500), styleMask: [.titled], backing: .buffered, defer: false)
         palette.isReleasedWhenClosed = false
         palette.contentView = NSHostingView(rootView: CommandPaletteView().environmentObject(document))

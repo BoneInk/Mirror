@@ -4,15 +4,39 @@ import SwiftUI
 struct MirrorApp: App {
     @StateObject private var document = DocumentStore()
     @StateObject private var language = AppLanguageStore()
+    @StateObject private var updates = SoftwareUpdateStore()
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var showUpdates = false
 
     var body: some Scene {
         Window("Mirror", id: "main") {
             LocalizedContentRoot(document: document, language: language)
                 .frame(minWidth: 1120, minHeight: 620)
+                .task { await updates.check(automatic: true) }
+                .onReceive(Timer.publish(every: 3600, on: .main, in: .common).autoconnect()) { _ in
+                    Task { await updates.check(automatic: true) }
+                }
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active { Task { await updates.check(automatic: true) } }
+                }
+                .sheet(isPresented: $showUpdates) {
+                    SoftwareUpdateView(updates: updates)
+                        .environmentObject(document).environment(\.locale, language.locale)
+                        .padding(24).frame(width: 620, height: 410)
+                        .nativeDialog(theme: document.theme)
+                        .preferredColorScheme(document.theme.isDark ? .dark : .light)
+                }
         }
         .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unifiedCompact(showsTitle: false))
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button(language.text("Check for Updates…")) {
+                    showUpdates = true
+                    Task { await updates.check() }
+                }
+                .disabled(updates.busy)
+            }
             CommandGroup(replacing: .newItem) {
                 Button(language.text("New Document")) { document.newDocument() }
                     .keyboardShortcut("n")
@@ -165,7 +189,7 @@ struct MirrorApp: App {
         }
 
         Settings {
-            LocalizedSettingsRoot(document: document, language: language)
+            LocalizedSettingsRoot(document: document, language: language, updates: updates)
         }
     }
 }
@@ -185,9 +209,11 @@ private struct LocalizedContentRoot: View {
 private struct LocalizedSettingsRoot: View {
     @ObservedObject var document: DocumentStore
     @ObservedObject var language: AppLanguageStore
+    @ObservedObject var updates: SoftwareUpdateStore
 
     var body: some View {
         AppearanceSettingsView()
+            .environmentObject(updates)
             .environmentObject(document)
             .environment(\.locale, language.locale)
             .id(language.selection.rawValue)

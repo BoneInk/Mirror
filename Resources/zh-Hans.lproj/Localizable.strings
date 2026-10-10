@@ -292,3 +292,36 @@
 "Use regular expression" = "使用正则表达式";
 "Search text in every file" = "搜索文件中的文本";
 "Type a file name or path" = "输入文件名或路径";
+
+"Software Update" = "软件更新";
+"Automatically download and install updates" = "自动下载并安装更新";
+"Check daily. Updates download from GitHub Releases and install after you quit, without interrupting your writing." = "每天检查 GitHub Releases，后台下载并校验，退出后自动安装，不打断写作。";
+"Updates are checked automatically once a day." = "每天自动检查一次更新。";
+"Checking for updates…" = "正在检查更新…";
+"An update is available." = "发现新版本。";
+"Mirror is up to date." = "Mirror 已是最新版本。";
+"Unable to check for updates." = "无法检查更新。";
+"Unable to prepare the update." = "无法准备更新。";
+"Downloading and verifying the update…" = "正在下载并校验更新…";
+"Preparing installation…" = "正在准备安装…";
+"Update ready. It will install after you quit Mirror." = "更新已就绪，退出 Mirror 后自动安装。";
+"Automatic installation paused. Choose Restart to Update to install now." = "自动安装已暂停，可以点击立即重启更新。";
+"Update ready. Choose Restart to Update to install now." = "更新已就绪，请点击立即重启更新。";
+"Downloaded. Move Mirror to a writable Applications folder to enable automatic installation." = "已下载。请将 Mirror 移到可写的应用程序文件夹，才能自动安装更新。";
+"Check for Updates…" = "检查更新…";
+"Restart to Update" = "立即重启更新";
+"Download Update" = "下载更新";
+"Open Installer" = "打开安装包";
+"Release Notes" = "更新说明";
+"Last checked:" = "上次检查：";
+"New version: %@" = "新版本：%@";
+"GitHub is unavailable. Please try again later." = "GitHub 暂时不可用，请稍后重试。";
+"The release installer is invalid." = "Release 安装包信息无效。";
+"The release has no valid SHA-256 checksum." = "Release 缺少有效的 SHA-256 校验信息。";
+"Installer verification failed. Nothing was installed." = "安装包校验失败，未进行安装。";
+"No compatible macOS release was found." = "没有找到兼容的 macOS 安装包。";
+"Unable to prepare the update. The current application is unchanged." = "无法准备更新，当前安装保持不变。";
+"This update requires a newer macOS version." = "此更新需要更高的 macOS 版本。";
+
+"Could not preserve drafts. Update restart was cancelled." = "无法保留草稿，已取消更新重启。";
+"The previous automatic installation failed. Please retry or open the installer." = "上次自动安装失败，请重试或打开安装包手动更新。";

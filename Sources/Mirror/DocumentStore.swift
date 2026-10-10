@@ -1671,15 +1671,18 @@ final class DocumentStore: ObservableObject {
         let savedAt: Date
     }
 
-    func persistForApplicationTermination() {
+    @discardableResult
+    func persistForApplicationTermination() -> Bool {
         autosaveTask?.cancel()
         recoveryTask?.cancel()
         syncCurrentTab()
         do {
             let url = try Self.recoverySnapshotURL(createFolder: true)
             try JSONEncoder().encode(currentRecoverySession()).write(to: url, options: .atomic)
+            return true
         } catch {
             NSLog("Mirror could not preserve the editing session: %@", error.localizedDescription)
+            return false
         }
     }
 

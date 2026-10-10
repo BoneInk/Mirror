@@ -8,8 +8,8 @@ A Markdown editor focused on simplicity, speed, and a pleasant interface, with a
 
 | Platform | Current version | Download | Requirements |
 | --- | --- | --- | --- |
-| macOS | 1.3.4 | [DMG and release notes](https://github.com/BoneInk/Mirror/releases/tag/v1.3.4) | macOS 14+ · Intel / Apple Silicon |
-| Windows | 1.3.2 | [Installer](https://github.com/BoneInk/Mirror/releases/download/v1.3.2/Mirror-1.3.2-windows-x64-setup.exe) · [Portable](https://github.com/BoneInk/Mirror/releases/download/v1.3.2/Mirror-1.3.2-windows-x64-portable.exe) · [Release notes](https://github.com/BoneInk/Mirror/releases/tag/v1.3.2) | Windows 10 / 11 · x64 |
+| macOS | 1.3.5 | [DMG and release notes](https://github.com/BoneInk/Mirror/releases/tag/v1.3.5) | macOS 14+ · Intel / Apple Silicon |
+| Windows | 1.3.5 | [Installer](https://github.com/BoneInk/Mirror/releases/download/v1.3.5/Mirror-1.3.5-windows-x64-setup.exe) · [Portable](https://github.com/BoneInk/Mirror/releases/download/v1.3.5/Mirror-1.3.5-windows-x64-portable.exe) · [Release notes](https://github.com/BoneInk/Mirror/releases/tag/v1.3.5) | Windows 10 / 11 · x64 |
 
 ## Why I built Mirror
 
@@ -39,12 +39,16 @@ Cloud features, elaborate interactions, and a distinctive design language are op
 
 **Windows · Split editing and live preview**
 
-![Windows 1.3.2 split editing and preview](Windows/docs/windows-light.png)
+![Windows split editing and preview](Windows/docs/windows-light.png)
 
 ## Get started
 
 - **macOS:** Download the DMG and drag Mirror into Applications.
-- **Windows:** Run the installer `.exe`, or open the portable edition directly. Checksums are in [SHA256SUMS.txt](https://github.com/BoneInk/Mirror/releases/download/v1.3.2/SHA256SUMS.txt).
+- **Windows:** Run the installer `.exe`, or open the portable edition directly. Checksums are in [SHA256SUMS.txt](https://github.com/BoneInk/Mirror/releases/download/v1.3.5/SHA256SUMS.txt).
+
+### Automatic updates
+
+macOS and Windows check GitHub Releases daily, download and verify SHA-256 in the background, and install after you quit. The next launch uses the new version. Settings let you disable updates, check manually, or restart immediately after preserving drafts. Use Software Update on macOS or About Mirror on Windows. The first upgrade to v1.3.5 requires manual installation; installations without write permission keep the downloaded package for manual installation.
 
 ### Asking about selected text
 
