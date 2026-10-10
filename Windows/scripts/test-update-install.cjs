@@ -35,20 +35,23 @@ async function main() {
         const target = path.join(directory, "Mirror.exe");
         await fs.copyFile(fixture, target);
         const marker = path.join(root, `${path.basename(directory)}-armed`);
+        const failureFile = path.join(root, "failure.txt");
+        await fs.rm(failureFile, { force: true });
         if (mode !== "unarmed") await fs.writeFile(marker, "");
         const parent = spawn(target, [], { windowsHide: true, stdio: "ignore" });
         await new Promise((resolve, reject) => { parent.once("spawn", resolve); parent.once("error", reject); });
         const exited = new Promise((resolve) => parent.once("exit", resolve));
         let script = installScript({ parentPID: parent.pid, target, installer, portable, currentVersion: "1.0.0", nextVersion: version, marker, restart: path.join(root, "no-restart"), result: path.join(root, "failure.txt") });
-        if (mode === "rollback") script = script.replace("  if ((Get-Item -LiteralPath $target).VersionInfo.ProductVersion", "  throw 'Injected final verification failure'\n  if ((Get-Item -LiteralPath $target).VersionInfo.ProductVersion");
+        if (mode === "rollback") script = script.replace("  $installedVersion =", "  throw 'Injected final verification failure'\n  $installedVersion =");
         const helper = run(powershell, ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")]);
         try {
           await new Promise((resolve) => setTimeout(resolve, 300));
           assert.deepEqual(await fs.readFile(target), await fs.readFile(fixture), "Never replace a running app");
         } finally { parent.kill(); await exited; }
         const result = await helper;
-        if (mode === "rollback") assert.notEqual(result.code, 0, result.output);
-        else assert.equal(result.code, 0, result.output);
+        const diagnostic = result.output + "\n" + await fs.readFile(failureFile, "utf8").catch(() => "");
+        if (mode === "rollback") assert.notEqual(result.code, 0, diagnostic);
+        else assert.equal(result.code, 0, diagnostic);
         if (mode === "success") assert.notDeepEqual(await fs.readFile(target), await fs.readFile(fixture));
         else assert.deepEqual(await fs.readFile(target), await fs.readFile(fixture), result.output);
         console.log(`Windows ${portable ? "portable" : "NSIS"} installation passed: ${mode}`);

@@ -64,7 +64,8 @@ try {
   $backedUp = $true
   $process = Start-Process -FilePath $installer -ArgumentList ('/S /currentuser /D=' + $folder) -Wait -PassThru
   if ($process.ExitCode -ne 0) { throw 'Installer failed' }`}
-  if ((Get-Item -LiteralPath $target).VersionInfo.ProductVersion -ne ${literal(nextVersion)}) { throw 'Installed version does not match' }
+  $installedVersion = (Get-Item -LiteralPath $target).VersionInfo.ProductVersion
+  if ($installedVersion -ne ${literal(nextVersion)}) { throw ('Installed version does not match: ' + $installedVersion) }
   Remove-Item -LiteralPath $backup -Recurse -Force
   $backedUp = $false
   Remove-Item -LiteralPath $armed -Force
@@ -80,6 +81,7 @@ try {
     } catch { $failure += '; rollback: ' + $_.Exception.Message }
   }
   $failure | Set-Content -LiteralPath $result -Encoding UTF8
+  [Console]::Error.WriteLine($failure)
   if ((Test-Path -LiteralPath $restart) -and (Test-Path -LiteralPath $target)) { Start-Process -FilePath $target }
   exit 1
 }
