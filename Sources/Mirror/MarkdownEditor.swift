@@ -41,6 +41,9 @@ struct MarkdownEditor: NSViewRepresentable {
         textView.usesFindBar = true
         textView.isContinuousSpellCheckingEnabled = settings.checkSpelling && isMarkdown
         textView.isVerticallyResizable = true
+        // Follow the clip view width explicitly, including AppKit's legacy
+        // layout behavior where a zero-width document view is not expanded.
+        textView.autoresizingMask = [.width]
         configureWrapping(textView)
         textView.textContainerInset = NSSize(width: 44, height: 34)
         textView.font = resolvedFont(family: isMarkdown ? typography.editorFontFamily : typography.codeFontFamily,

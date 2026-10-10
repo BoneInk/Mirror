@@ -14,6 +14,28 @@ func webViews(_ view: NSView) -> [WKWebView] {
 }
 
 @MainActor
+func sourceEditors(_ view: NSView) -> [NSTextView] {
+    if let textView = view as? NSTextView { return [textView] }
+    return view.subviews.flatMap(sourceEditors)
+}
+
+@MainActor
+func verifySourceEditor(_ window: NSWindow, expectedText: String) {
+    window.contentView!.layoutSubtreeIfNeeded()
+    guard let editor = sourceEditors(window.contentView!).first(where: { $0.string == expectedText }),
+          let container = editor.textContainer,
+          let layout = editor.layoutManager else {
+        preconditionFailure("The source editor must retain the loaded document")
+    }
+    layout.ensureLayout(for: container)
+    precondition(editor.bounds.width > 100, "The source editor must have a visible width")
+    precondition(container.containerSize.width > 0, "The text container must have a positive width")
+    precondition(editor.visibleRect.intersects(editor.bounds), "Source text must intersect the viewport")
+    precondition(layout.usedRect(for: container).width > 0, "Source text must have drawable glyphs")
+    print("Source editor verified: width \(editor.bounds.width), container \(container.containerSize.width)")
+}
+
+@MainActor
 func snapshot(_ window: NSWindow, name: String) async throws {
     if ProcessInfo.processInfo.environment["MIRROR_SYSTEM_CAPTURE_HELPER"] != nil {
         window.center()
@@ -114,6 +136,21 @@ Task { @MainActor in
         window.orderFront(nil)
         try await Task.sleep(for: .seconds(2))
         try await snapshot(window, name: "editor-light")
+        verifySourceEditor(window, expectedText: markdown)
+        document.showPreview = false
+        try await snapshot(window, name: "editor-only-light")
+        verifySourceEditor(window, expectedText: markdown)
+        document.showPreview = true
+        let longMarkdown = markdown + String(repeating: "\n\n## 长文滚动验证\n\n编辑器应在切换模式和滚动后继续显示正文。", count: 300)
+        document.text = longMarkdown
+        try await Task.sleep(for: .milliseconds(250))
+        verifySourceEditor(window, expectedText: longMarkdown)
+        let longEditor = sourceEditors(window.contentView!).first { $0.string == longMarkdown }!
+        longEditor.scrollRangeToVisible(NSRange(location: (longMarkdown as NSString).length - 30, length: 10))
+        try await snapshot(window, name: "editor-long-scrolled")
+        verifySourceEditor(window, expectedText: longMarkdown)
+        precondition(longEditor.visibleRect.minY > 0, "Long documents must scroll to visible text")
+        document.text = markdown
         document.readerMode = true
         document.showOutline = true
         try await snapshot(window, name: "reader-light")
@@ -122,6 +159,7 @@ Task { @MainActor in
         document.readerMode = false
         window.setContentSize(NSSize(width: 1120, height: 620))
         try await snapshot(window, name: "editor-compact-dark")
+        verifySourceEditor(window, expectedText: markdown)
         document.selectTheme(.midnight)
         precondition(document.theme.accentHex == EditorTheme.midnight.accentHex)
         document.selectTheme(.paper)
