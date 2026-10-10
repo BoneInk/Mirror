@@ -23,9 +23,19 @@
 
 ## 界面
 
-![macOS 源码编辑与实时预览](docs/images/native-editor-light.png)
+**macOS · 分栏编辑与实时预览**
+
+![macOS 分栏编辑与实时预览](docs/images/native-editor-light.png)
+
+**macOS · 沉浸式阅读**
 
 ![macOS 沉浸式阅读](docs/images/native-reader-light.png)
+
+**macOS · 深色阅读**
+
+![macOS 深色阅读与文档大纲](docs/images/native-reader-dark.png)
+
+**Windows · 分栏编辑与实时预览**
 
 ![Windows 1.3.2 分栏编辑与预览](Windows/docs/windows-light.png)
 

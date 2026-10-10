@@ -25,9 +25,19 @@ Cloud features, elaborate interactions, and a distinctive design language are op
 
 ## Screenshots
 
-![macOS source editing and live preview](docs/images/native-editor-light.png)
+**macOS · Split editing and live preview**
+
+![macOS split editing and live preview](docs/images/native-editor-light.png)
+
+**macOS · Immersive reading**
 
 ![macOS immersive reading](docs/images/native-reader-light.png)
+
+**macOS · Dark reading**
+
+![macOS dark reading with document outline](docs/images/native-reader-dark.png)
+
+**Windows · Split editing and live preview**
 
 ![Windows 1.3.2 split editing and preview](Windows/docs/windows-light.png)
 
