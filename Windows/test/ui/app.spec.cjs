@@ -696,6 +696,10 @@ test("editor selection follows its focus end, stays still on mouse movement, and
   });
   await stop();
   await launch();
+  // Keep this caret-to-chat comparison free of responsive sidebar reflow.
+  await application.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0].setSize(1600, 1100),
+  );
   const area = page.getByLabel("Markdown 编辑器");
   await area.fill(
     Array.from({ length: 80 }, (_, i) => `第 ${i + 1} 行 引用资料`).join("\n"),
@@ -725,7 +729,10 @@ test("editor selection follows its focus end, stays still on mouse movement, and
   expect(await toolbar.boundingBox()).toEqual(backward);
   await area.press("ArrowRight");
   await expect(toolbar).toHaveCount(0);
-  await area.press("Control+Home");
+  await area.evaluate((area) => {
+    area.setSelectionRange(0, 0);
+    area.scrollTop = 0;
+  });
   await area.press("Shift+ArrowRight");
   await expect(toolbar).toBeVisible();
   await select("forward");
@@ -837,12 +844,30 @@ test("preview selection tracks forward and backward DOM ranges, flips near the b
       initialWorkspace.x + initialWorkspace.width - forward.width - 8,
     ),
   );
-  expect(Math.abs(forward.x - expectedLeft)).toBeLessThan(2);
-  expect(Math.abs(forward.y - (endpoint.bottom + 8))).toBeLessThan(2);
+  await expect
+    .poll(async () => Math.abs((await toolbar.boundingBox()).x - expectedLeft))
+    .toBeLessThan(2);
+  await expect
+    .poll(async () => Math.abs((await toolbar.boundingBox()).y - (endpoint.bottom + 8)))
+    .toBeLessThan(2);
   await select(1, true);
+  const startpoint = await paragraphs.nth(1).evaluate((p) => {
+    const r = document.createRange();
+    r.setStart(p.firstChild, 0);
+    r.collapse(true);
+    return r.getBoundingClientRect().left;
+  });
+  const expectedBackward = Math.max(
+    initialWorkspace.x + 8,
+    Math.min(
+      startpoint - 12,
+      initialWorkspace.x + initialWorkspace.width - forward.width - 8,
+    ),
+  );
   await expect
     .poll(async () => (await toolbar.boundingBox()).x)
-    .toBeLessThan(forward.x - 40);
+    .toBeCloseTo(expectedBackward, 0);
+  expect(expectedBackward).toBeLessThan(expectedLeft);
   await page.screenshot({ path: "test-results/windows-selection-preview.png" });
   const bottomIndex = await page.evaluate(() => {
     const viewport = document
@@ -860,9 +885,20 @@ test("preview selection tracks forward and backward DOM ranges, flips near the b
   expect(bottomIndex).toBeGreaterThan(1);
   await select(bottomIndex);
   await expect(toolbar).toHaveAttribute("data-placement", "top");
+  await page.evaluate(() => window.getSelection().removeAllRanges());
   await application.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0].setSize(800, 600),
   );
+  await expect
+    .poll(() => page.locator(".preview-scroll").evaluate((viewport) => viewport.clientHeight))
+    .toBeLessThan(500);
+  // Chromium completes selection/scroll anchoring on the resize frame.
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve)),
+  ));
+  await page.locator(".preview-scroll").evaluate((viewport) => {
+    viewport.scrollTop = 0;
+  });
   await select(0);
   await expect(toolbar).toBeVisible();
   const box = await toolbar.boundingBox();
