@@ -139,20 +139,13 @@ final class AgentConfigurationStore: ObservableObject {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         profiles = defaults.data(forKey: "mirrorAgentProfiles").flatMap { try? JSONDecoder().decode([AgentProfile].self, from: $0) }
-            ?? AgentKind.allCases.filter { $0 != .custom }.map(AgentProfile.preset)
+            ?? [AgentKind.codex, .claude].map(AgentProfile.preset)
         selectedID = defaults.string(forKey: "mirrorDefaultAgent") ?? "codex"
         // Upgrade only the untouched placeholder from v1.0; preserve user-configured endpoints.
         if let i = profiles.firstIndex(where: { $0.id == "smartwork" && $0.kind == .smartwork && $0.connection == .chatCompletions && $0.endpoint.isEmpty && $0.executable.isEmpty && $0.model.isEmpty }) {
             profiles[i] = .preset(.smartwork)
         }
-        // Seed newly introduced presets once, without restoring configurations users later remove.
-        if !defaults.bool(forKey: "mirrorAgentPresetsV11") {
-            for kind in [AgentKind.codebuddy, .cursor, .hermes, .kimi, .qoder, .workbuddy, .qwenwork] where !profiles.contains(where: { $0.kind == kind }) {
-                profiles.append(.preset(kind))
-            }
-            defaults.set(true, forKey: "mirrorAgentPresetsV11")
-            persist()
-        }
+        // Other providers are opt-in through Settings → Add. Preserve existing configurations.
     }
     var selected: AgentProfile { profiles.first { $0.id == selectedID } ?? .preset(.codex) }
     func save(_ profile: AgentProfile) {
@@ -404,7 +397,7 @@ struct AgentModelOption: Identifiable, Equatable {
 enum AgentModelCatalog {
     static func supports(_ profile: AgentProfile) -> Bool {
         profile.connection == .smartwork || profile.connection == .chatCompletions ||
-            (profile.connection == .native && profile.kind == .codex)
+            (profile.connection == .native && (profile.kind == .codex || AgentNativeModelCatalog.supports(profile.kind)))
     }
 
     static func parse(_ object: [String: Any], codex: Bool = false, smartwork: Bool = false) -> [AgentModelOption] {
@@ -422,6 +415,9 @@ enum AgentModelCatalog {
 
     static func fetch(_ profile: AgentProfile, credential: (String) -> String = AgentCredential.read) async throws -> [AgentModelOption] {
         guard supports(profile) else { return [] }
+        if profile.connection == .native && profile.kind != .codex {
+            return try await AgentNativeModelCatalog.fetch(profile)
+        }
         if profile.connection == .native {
             let server = CodexAppServer()
             let deadline = Task { @MainActor in

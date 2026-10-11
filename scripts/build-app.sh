@@ -7,6 +7,8 @@ APP_DIR="$PROJECT_DIR/dist/Mirror.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 
 cd "$PROJECT_DIR"
+SWIFT_SDK_ARGS=()
+[[ -z "${SDKROOT:-}" ]] || SWIFT_SDK_ARGS=(--sdk "$SDKROOT")
 
 # Swift 6.4's swiftbuild backend can write the deployment target as the SDK
 # version. AppKit then uses legacy layout behavior; native preserves the SDK.
@@ -16,9 +18,11 @@ if [[ "$BUILD_MODE" == "release" ]]; then
   for ARCHITECTURE in "${ARCHITECTURES[@]}"; do
     SCRATCH_DIR="$PROJECT_DIR/.build-$ARCHITECTURE"
     swift build --build-system native -c release \
+      "${SWIFT_SDK_ARGS[@]}" \
       --arch "$ARCHITECTURE" \
       --scratch-path "$SCRATCH_DIR"
     BIN_DIR="$(swift build --build-system native -c release \
+      "${SWIFT_SDK_ARGS[@]}" \
       --arch "$ARCHITECTURE" \
       --scratch-path "$SCRATCH_DIR" --show-bin-path)"
     ARCH_BINARIES+=("$BIN_DIR/Mirror")
@@ -27,8 +31,8 @@ if [[ "$BUILD_MODE" == "release" ]]; then
   xcrun lipo -create "${ARCH_BINARIES[@]}" -output "$PROJECT_DIR/.build-universal/release/Mirror"
   BUILT_EXECUTABLE="$PROJECT_DIR/.build-universal/release/Mirror"
 else
-  swift build --build-system native -c "$BUILD_MODE"
-  BUILT_EXECUTABLE="$(swift build --build-system native -c "$BUILD_MODE" --show-bin-path)/Mirror"
+  swift build --build-system native "${SWIFT_SDK_ARGS[@]}" -c "$BUILD_MODE"
+  BUILT_EXECUTABLE="$(swift build --build-system native "${SWIFT_SDK_ARGS[@]}" -c "$BUILD_MODE" --show-bin-path)/Mirror"
 fi
 
 rm -rf "$APP_DIR"

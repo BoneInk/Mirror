@@ -760,7 +760,7 @@ private struct CodexChatView: View {
                 catalogStatus = options.isEmpty ? "服务未返回模型，仍可手动填写。" : "已读取 \(options.count) 个模型；深度按接口返回值显示。"
                 if !draftEffort.isEmpty && !availableEfforts.contains(draftEffort) { draftEffort = "" }
             } catch {
-                if !Task.isCancelled { catalogStatus = "读取失败，仍可手动填写；可点击刷新重试。" }
+                if !Task.isCancelled { catalogStatus = error.localizedDescription }
             }
         }
         .onChange(of: draftModel) { _, _ in

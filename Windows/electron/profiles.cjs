@@ -109,4 +109,5 @@ const effortOptions = (kind) =>
       : kind === "pi"
         ? ["", "off", "minimal", "low", "medium", "high", "xhigh", "max"]
         : [""];
-module.exports = { nativeCommands, presets, connection, effortOptions };
+const defaultProfiles = presets.filter((p) => ["codex", "claude"].includes(p.kind));
+module.exports = { nativeCommands, presets, defaultProfiles, connection, effortOptions };

@@ -62,6 +62,7 @@ import {
   isMissing,
   selectableProfiles,
   defaultProfile,
+  canQueryModels,
 } from "./agent-availability.mjs";
 import hljs from "highlight.js/lib/common";
 import "./style.css";
@@ -444,6 +445,27 @@ function App() {
   const theme = selectedTheme(config, systemDark);
   const dark = theme.dark;
   const conversation = conversations.find((value) => value.id === chatID);
+  const [chatModelStatus, setChatModelStatus] = useState("");
+  const chatModelRequest = useRef(0);
+  const queryProfile = conversation?.profile;
+  useEffect(() => {
+    const request = ++chatModelRequest.current;
+    let live = true;
+    setChatModels([]);
+    if (!queryProfile) return;
+    if (!canQueryModels(queryProfile)) {
+      setChatModelStatus("模型由客户端或包装命令管理，此接入未提供自动查询接口。");
+      return;
+    }
+    setChatModelStatus("正在读取可用模型…");
+    api("agent-models", queryProfile).then((rows) => {
+      if (live && chatModelRequest.current === request) {
+        setChatModels(rows);
+        setChatModelStatus(rows.length ? `已读取 ${rows.length} 个模型` : "未返回模型列表，可手动填写。");
+      }
+    }).catch((error) => { if (live && chatModelRequest.current === request) setChatModelStatus(error.message); });
+    return () => { live = false; };
+  }, [chatID, queryProfile?.id, queryProfile?.kind, queryProfile?.connection, queryProfile?.executable, queryProfile?.endpoint]);
   const outline = headings(doc?.text || "");
   const dirty = doc && doc.text !== doc.savedText;
   current.current = { tabs, active, folder, config, conversations, ready };
@@ -2023,17 +2045,22 @@ function App() {
                 <Button
                   onClick={() =>
                     safely(async () => {
+                      const request = ++chatModelRequest.current;
                       const models = await api(
                         "agent-models",
                         conversation.profile,
                       );
+                      if (chatModelRequest.current !== request) return;
                       setChatModels(models);
+                      setChatModelStatus(models.length ? `已读取 ${models.length} 个模型` : "未返回模型列表，可手动填写。");
                       if (!models.length) toast("可手动填写模型 ID");
                     })
                   }
+                  disabled={!canQueryModels(conversation.profile)}
                 >
                   模型列表
                 </Button>
+                <span className="muted" role="status">{chatModelStatus}</span>
                 <datalist id="chat-model-options">
                   {chatModels.map((m) => (
                     <option key={m.id} value={m.id}>
@@ -2072,7 +2099,7 @@ function App() {
                       }
                     }}
                   >
-                    {(conversation.profile.kind === "codex"
+                    {["", ...(chatModels.find((m) => m.id === conversation.profile.model || (!conversation.profile.model && m.isDefault))?.efforts ?? (conversation.profile.kind === "codex"
                       ? [
                           "",
                           "none",
@@ -2096,7 +2123,7 @@ function App() {
                               "max",
                             ]
                           : [""]
-                    ).map((effort) => (
+                    )).filter(Boolean)].map((effort) => (
                       <option key={effort} value={effort}>
                         {effort || "默认"}
                       </option>

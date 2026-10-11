@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Sparkles,
   MessageSquare,
@@ -8,7 +8,7 @@ import {
   Info,
   Check,
 } from "lucide-react";
-import { isMissing, selectableProfiles } from "./agent-availability.mjs";
+import { isMissing, selectableProfiles, canQueryModels } from "./agent-availability.mjs";
 import { themes } from "./themes";
 import { version } from "../package.json";
 const api = (name, ...args) => window.mirror.call(name, ...args);
@@ -116,9 +116,31 @@ export function Preferences({
   const [token, setToken] = useState("");
   const [models, setModels] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [modelStatus, setModelStatus] = useState("");
+  const [editing, setEditing] = useState(false);
+  const modelRequest = useRef(0);
+  useEffect(() => {
+    const request = ++modelRequest.current;
+    if (!editing) return;
+    let live = true;
+    setModels([]);
+    if (!canQueryModels(draft)) {
+      setModelStatus("模型由客户端或包装命令管理，此接入未提供自动查询接口。");
+      return;
+    }
+    setModelStatus("正在读取可用模型…");
+    const timer = setTimeout(() => {
+      api("agent-models", draft).then((rows) => {
+        if (live && modelRequest.current === request) {
+          setModels(rows);
+          setModelStatus(rows.length ? `已读取 ${rows.length} 个模型` : "未返回模型列表，可手动填写。");
+        }
+      }).catch((error) => { if (live && modelRequest.current === request) setModelStatus(error.message); });
+    }, 300);
+    return () => { live = false; clearTimeout(timer); };
+  }, [editing, draft.id, draft.kind, draft.connection, draft.executable, draft.endpoint]);
   const detected = discoveries;
   const [scanning, setScanning] = useState(false);
-  const [editing, setEditing] = useState(false);
   const [memoryQuery, setMemoryQuery] = useState("");
   const [deleting, setDeleting] = useState(null);
   const scan = () =>
@@ -166,11 +188,14 @@ export function Preferences({
     });
   const loadModels = () =>
     safely(async () => {
+      const request = ++modelRequest.current;
       setBusy(true);
       try {
         if (token) await api("credential-save", draft.id, token);
         const result = await api("agent-models", draft);
+        if (modelRequest.current !== request) return;
         setModels(result);
+        setModelStatus(result.length ? `已读取 ${result.length} 个模型` : "未返回模型列表，可手动填写。");
         if (!result.length) toast("未提供模型列表，可以手动填写模型 ID");
       } finally {
         setBusy(false);
@@ -762,9 +787,10 @@ export function Preferences({
                 ))}
               </datalist>
             </label>
-            <Button disabled={busy} onClick={loadModels}>
+            <Button disabled={busy || !canQueryModels(draft)} onClick={loadModels}>
               {busy ? "读取中…" : "读取模型列表"}
             </Button>
+            <p className="muted" role="status">{modelStatus}</p>
             <label className="field">
               思考深度
               <select

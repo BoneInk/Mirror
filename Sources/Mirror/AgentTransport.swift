@@ -53,7 +53,8 @@ final class AgentTransport {
             default: throw CodexConnectionError(message: "此智能体需配置 HTTP 地址或自定义包装命令。")
             }
             if !profile.model.isEmpty { arguments += ["--model", profile.model] }
-            if let effort = profile.reasoningEffort, profile.effortOptions.contains(effort) {
+            // configureGeneration validates catalog-provided levels, which may exceed older presets.
+            if let effort = profile.reasoningEffort, !effort.isEmpty {
                 if profile.kind == .claude { arguments += ["--effort", effort] }
                 if profile.kind == .pi { arguments += ["--thinking", effort] }
             }

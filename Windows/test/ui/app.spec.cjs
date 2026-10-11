@@ -301,7 +301,7 @@ test("Mac themes, typography, editor options and legacy settings migration persi
   );
   expect(settings.theme).toBe("sepia");
   expect(settings.scrollSync).toBe("center");
-  expect(settings.profiles.some((p) => p.id === "smartwork")).toBe(true);
+  expect(settings.profiles.map((p) => p.kind)).toEqual(["codex", "claude"]);
   application = await electron.launch({
     args: [path.resolve("."), "--no-sandbox"],
     env: { ...process.env, MIRROR_TEST_DATA: root },
@@ -347,7 +347,8 @@ test("Smartwork profile sends through IPC and shows model discovery without chan
   try {
     await page.evaluate(async (base) => {
       const data = await window.mirror.call("bootstrap");
-      const p = data.settings.profiles.find((p) => p.id === "smartwork");
+      const p = (await window.mirror.call("agent-presets")).find((p) => p.id === "smartwork");
+      data.settings.profiles.push(p);
       p.endpoint = base;
       p.model = "fixture::model";
       data.settings.selectedAgent = p.id;
@@ -369,7 +370,6 @@ test("Smartwork profile sends through IPC and shows model discovery without chan
     );
     expect(received.prompt).toContain("协议问题");
     await page.getByTitle("切换智能体与模型").click();
-    await page.getByRole("button", { name: "模型列表", exact: true }).click();
     await expect(page.locator("#chat-model-options option")).toHaveAttribute(
       "value",
       "fixture::model",
@@ -378,6 +378,66 @@ test("Smartwork profile sends through IPC and shows model discovery without chan
     server.closeAllConnections();
     await new Promise((r) => server.close(r));
   }
+});
+
+test("only two agents are configured initially and optional agents can be added in settings", async () => {
+  const initial = await page.evaluate(() => window.mirror.call("bootstrap"));
+  expect(initial.settings.profiles.map((p) => p.kind)).toEqual(["codex", "claude"]);
+  const cli = path.join(root, "qoder-added.cjs");
+  await fs.writeFile(cli, "process.stdout.write('auto - Auto\\nfixture-id - 模型🪞\\n')");
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await expect(page.getByLabel("添加智能体").locator('option[value="qoder"]')).toHaveCount(1);
+  await page.getByLabel("添加智能体").selectOption("qoder");
+  await page.getByPlaceholder("留空自动查找 PATH").fill(cli);
+  await expect(page.locator("#mirror-models option")).toHaveCount(2);
+  await page.locator('input[list="mirror-models"]').fill("saved-custom-id");
+  await page.locator('input[list="mirror-models"]').blur();
+  await expect(page.locator('input[list="mirror-models"]')).toHaveValue("saved-custom-id");
+  await page.getByRole("button", { name: "保存并设为默认", exact: true }).click();
+  await expect.poll(async () => {
+    const data = await page.evaluate(() => window.mirror.call("bootstrap"));
+    return data.settings.profiles.map((p) => p.kind);
+  }).toEqual(["codex", "claude", "qoder"]);
+  await stop(); await launch();
+  const restored = await page.evaluate(() => window.mirror.call("bootstrap"));
+  expect(restored.settings.profiles.find((p) => p.kind === "qoder").model).toBe("saved-custom-id");
+});
+
+test("native CLI models load automatically and a failed refresh preserves the saved selection", async () => {
+  const cli = path.join(root, "qoder-model-fixture.cjs");
+  await fs.writeFile(cli, "process.stdout.write('auto - Auto\\nfixture-id - 模型🪞\\n')");
+  await page.evaluate(async (executable) => {
+    const data = await window.mirror.call("bootstrap");
+    const p = (await window.mirror.call("agent-presets")).find((p) => p.id === "qoder");
+    data.settings.profiles.push(p);
+    p.executable = executable;
+    p.model = "saved-custom-id";
+    data.settings.selectedAgent = p.id;
+    await window.mirror.call("settings-save", data.settings);
+  }, cli);
+  await stop(); await launch();
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await page.locator(".agent-list > div").filter({ has: page.locator("strong", { hasText: /^Qoder$/ }) }).getByRole("button", { name: "配置…", exact: true }).click();
+  await expect(page.locator("#mirror-models option")).toHaveCount(2);
+  await expect(page.locator('input[list="mirror-models"]')).toHaveValue("saved-custom-id");
+  await page.getByRole("button", {name:"关闭",exact:true}).last().click();
+  await page.getByRole("button", {name:"关闭",exact:true}).click();
+  await page.getByLabel("Markdown 编辑器").fill("查询模型引用。");
+  await page.getByLabel("Markdown 编辑器").evaluate((area) => {
+    area.focus(); area.setSelectionRange(0, 6);
+    area.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+  });
+  await page.getByRole("button", { name: "提问", exact: true }).click();
+  await page.getByTitle("切换智能体与模型").click();
+  await expect(page.locator("#chat-model-options option")).toHaveCount(2);
+  await expect(page.locator('input[list="chat-model-options"]')).toHaveValue("saved-custom-id");
+  await fs.writeFile(cli, 'process.exit(2)');
+  await page.getByRole("button", { name: "模型列表", exact: true }).click();
+  await expect(page.locator(".toast")).toContainText("模型查询失败");
+  await expect(page.locator('input[list="chat-model-options"]')).toHaveValue("saved-custom-id");
+  expect(errors).toEqual([]);
 });
 
 test("metadata, callouts, footnotes and source anchors render offline and remain sanitized", async () => {

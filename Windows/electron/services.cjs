@@ -193,6 +193,8 @@ async function listModels(profile, token) {
     } finally {
       client.close();
     }
+  } else if (kind === "native") {
+    return require("./model-catalog.cjs").nativeModels(profile);
   } else if (["http", "smartwork"].includes(kind)) {
     const url = `${endpoint(profile.endpoint)}/${kind === "smartwork" ? "api/agent/models" : "models"}`;
     const response = await fetch(url, {

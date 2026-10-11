@@ -63,7 +63,7 @@ const watcher = new DocumentWatcher(
 const filters = [
   { name: "Markdown", extensions: ["md", "markdown", "mdown", "txt"] },
 ];
-const { presets, connection, effortOptions } = require("./profiles.cjs");
+const { presets, defaultProfiles, connection, effortOptions } = require("./profiles.cjs");
 const { listModels, discoverProfiles } = require("./services.cjs");
 const { queryCodex, threadMessages, continueThread } = require("./codex.cjs");
 function handle(name, fn) {
@@ -92,7 +92,7 @@ async function settings() {
     mode: "split",
     fontSize: 16,
     selectedAgent: "codex",
-    profiles: presets,
+    profiles: defaultProfiles,
     previewSize: 17,
     lineHeight: 1.9,
     contentWidth: 720,
@@ -103,18 +103,11 @@ async function settings() {
     automaticallyUpdates: true,
   };
   const saved = await store.read("settings", defaults);
-  const profiles = saved.profiles || [];
   return {
     ...defaults,
     ...saved,
-    profilesVersion: 1,
-    profiles:
-      saved.profilesVersion === 1
-        ? profiles
-        : [
-            ...profiles,
-            ...presets.filter((p) => !profiles.some((old) => old.id === p.id)),
-          ],
+    profilesVersion: 2,
+    profiles: saved.profiles ?? defaultProfiles,
   };
 }
 async function credential(id) {

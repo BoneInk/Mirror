@@ -15,6 +15,28 @@ Task { @MainActor in
         let codexModels = try await AgentModelCatalog.fetch(catalogProfile)
         check(codexModels.map(\.id) == ["fixture-a", "fixture-b"], "Model pagination and hidden filtering")
         check(codexModels[0].efforts == ["high", "ultra"] && codexModels[1].efforts == [], "Server effort values override presets, including empty list")
+        for kind in [AgentKind.claude, .codebuddy, .cursor, .opencode, .pi, .kimi, .qoder] {
+            var profile = AgentProfile.preset(kind); profile.executable = directory.appendingPathComponent(kind.rawValue).path
+            check(AgentModelCatalog.supports(profile), "All documented CLI metadata routes are enabled")
+            let options = try await AgentModelCatalog.fetch(profile)
+            check(options.count == 2, "Native model discovery / Unicode / deduplication: \(kind)")
+            if kind == .claude { check(options[0].isDefault && options[0].efforts == ["low", "high"] && options[1].efforts == [], "Claude returns per-model efforts") }
+            if kind == .kimi { check(options.map(\.id) == ["configured-key", "reasoning-key"] && options[0].isDefault, "Kimi ACP variants must map to CLI configuration keys") }
+            if kind == .pi { check(options.map(\.id) == ["one/same", "two/same"] && options[1].efforts == [], "Pi provider-qualified IDs prevent collisions") }
+        }
+        check(!AgentModelCatalog.supports(.preset(.workbuddy)) && !AgentModelCatalog.supports(.preset(.qwenwork)), "Do not query unavailable office protocols")
+        do { _ = try AgentNativeModelCatalog.parseList("Please login first", kind: .cursor); fatalError("Login instructions must not become a model") } catch {}
+        do { _ = try AgentNativeModelCatalog.parseACP(["sessionId": "old-version"], kind: .kimi); fatalError("Missing catalog must report an unsupported version") } catch {}
+        let idleCLI = directory.appendingPathComponent("idle-catalog")
+        try "#!/usr/bin/python3\nimport signal,time\nsignal.signal(signal.SIGTERM,lambda *args:None)\ntime.sleep(30)\n".write(to: idleCLI, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: idleCLI.path)
+        var idleProfile = AgentProfile.preset(.pi); idleProfile.executable = idleCLI.path
+        let started = Date()
+        do { _ = try await AgentNativeModelCatalog.fetch(idleProfile, timeout: 0.15); fatalError("Expected bounded metadata timeout") } catch {}
+        check(Date().timeIntervalSince(started) < 3, "Unresponsive CLI cannot hang model discovery")
+        let cancelledQuery = Task { @MainActor in try await AgentNativeModelCatalog.fetch(idleProfile) }
+        try await Task.sleep(for: .milliseconds(50)); cancelledQuery.cancel()
+        do { _ = try await cancelledQuery.value; fatalError("Expected metadata cancellation") } catch {}
         for kind in [AgentKind.smartwork, .hermes] {
             var profile = AgentProfile.preset(kind); profile.endpoint = "http://127.0.0.1:\(port)/catalog"
             let models = try await AgentModelCatalog.fetch(profile, credential: { _ in "fixture-only" })
@@ -31,12 +53,17 @@ Task { @MainActor in
             try await AgentTransport().run(profile: profile, messages: [user], directory: directory) { text = $0 }
             check(text == "你好🪞", "CLI parser failed: \(kind) \(text)")
         }
-        check(store.profiles.count == AgentKind.allCases.count - 1, "All provider presets are present")
+        check(store.profiles.map(\.kind) == [.codex, .claude], "Only Codex and Claude Code are configured by default")
+        store.save(.preset(.workbuddy))
+        check(AgentConfigurationStore(defaults: defaults).profiles.contains { $0.kind == .workbuddy }, "Other providers can be added explicitly")
         store.delete(store.profiles.first { $0.kind == .workbuddy }!)
         check(!AgentConfigurationStore(defaults: defaults).profiles.contains { $0.kind == .workbuddy }, "Removed presets stay removed")
         let legacyDefaults = UserDefaults(suiteName: "MirrorMigration-\(UUID())")!
         legacyDefaults.set(try JSONEncoder().encode([AgentProfile.preset(.claude)]), forKey: "mirrorAgentProfiles")
-        check(AgentConfigurationStore(defaults: legacyDefaults).profiles.contains { $0.kind == .qwenwork }, "New providers migrate into existing settings")
+        check(AgentConfigurationStore(defaults: legacyDefaults).profiles.map(\.kind) == [.claude], "Legacy settings do not auto-add optional providers")
+        var configuredExtra = AgentProfile.preset(.qwenwork); configuredExtra.executable = "/existing-wrapper"
+        legacyDefaults.set(try JSONEncoder().encode([AgentProfile.preset(.claude), configuredExtra]), forKey: "mirrorAgentProfiles")
+        check(AgentConfigurationStore(defaults: legacyDefaults).profiles.contains(configuredExtra), "Existing optional providers are preserved")
         check(AgentConfigurationStore.isSmartworkHealth(Data(#"{"ok":true,"name":"smartwork-agent-runtime","protocol":"smartwork-agent-turns-v1"}"#.utf8)), "Smartwork health protocol")
         check(!AgentConfigurationStore.isSmartworkHealth(Data(#"{"ok":true}"#.utf8)), "Reject unrelated health endpoints")
         for kind in [AgentKind.smartwork, .workbuddy] {
@@ -88,6 +115,7 @@ Task { @MainActor in
         check(memory.records.first?.agentProfile == custom, "Memory includes provider snapshot")
         chat.selectAgent(.preset(.claude));check(chat.agent == custom, "Provider cannot change within conversation")
         let record = memory.records[0]
+        store.save(.preset(.smartwork)) // Optional provider is explicitly added before picker use.
         let picker = CodexChatModel(reference: reference, directory: directory, memory: memory, agents: store)
         picker.chooseAgent(.preset(.smartwork), store: store)
         check(picker.agent.kind == .smartwork && store.selectedID == "smartwork", "Picker updates the settings default")

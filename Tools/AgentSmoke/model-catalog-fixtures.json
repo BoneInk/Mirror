@@ -1,0 +1,9 @@
+{
+  "claude": {"models": [{"value": "default", "displayName": "默认🪞", "supportedEffortLevels": ["low", "high"]}, {"value": "haiku", "displayName": "Haiku", "supportsEffort": false}]},
+  "pi": {"models": [{"provider": "one", "id": "same", "name": "模型🪞", "reasoning": true}, {"provider": "two", "id": "same", "reasoning": false}]},
+  "kimi": {"models": {"currentModelId": "configured-key,thinking", "availableModels": [{"modelId": "configured-key", "name": "Kimi🪞"}, {"modelId": "configured-key,thinking", "name": "Kimi🪞 (thinking)"}, {"modelId": "reasoning-key,thinking", "name": "Always Thinking"}]}},
+  "codebuddy": {"configOptions": [{"id": "mode", "type": "select", "options": [{"value": "ask", "name": "Ask"}]}, {"id": "model", "category": "model", "type": "select", "currentValue": "buddy-one", "options": [{"group": "main", "options": [{"value": "buddy-one", "name": "模型🪞"}, {"value": "buddy-two", "name": "Buddy 2"}]}]}]},
+  "opencode": "\u001b[32mprovider/model-one\u001b[0m\nprovider/model-one\nother/model-two\n",
+  "cursor": "Available models:\n  auto - Auto\n  sonnet-new - Sonnet🪞\n  sonnet-new - Sonnet🪞\nUse --model to select a model.\n",
+  "qoder": "Available models:\n| ID | Name |\n| --- | --- |\n| auto | Auto |\n| byok:key | 自定义🪞 |\n"
+}
