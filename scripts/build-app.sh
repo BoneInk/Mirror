@@ -47,5 +47,5 @@ done
 cp -R "$PROJECT_DIR/Resources/Mermaid" "$CONTENTS_DIR/Resources/Mermaid"
 cp -R "$PROJECT_DIR/Resources/KaTeX" "$CONTENTS_DIR/Resources/KaTeX"
 
-codesign --force --deep --sign - "$APP_DIR" >/dev/null 2>&1 || true
+"$PROJECT_DIR/scripts/sign-app.sh" "$APP_DIR"
 echo "$APP_DIR"

@@ -8,8 +8,8 @@ A Markdown editor focused on simplicity, speed, and a pleasant interface, with a
 
 | Platform | Current version | Download | Requirements |
 | --- | --- | --- | --- |
-| macOS | 1.3.5 | [DMG and release notes](https://github.com/BoneInk/Mirror/releases/tag/v1.3.5) | macOS 14+ · Intel / Apple Silicon |
-| Windows | 1.3.5 | [Installer](https://github.com/BoneInk/Mirror/releases/download/v1.3.5/Mirror-1.3.5-windows-x64-setup.exe) · [Portable](https://github.com/BoneInk/Mirror/releases/download/v1.3.5/Mirror-1.3.5-windows-x64-portable.exe) · [Release notes](https://github.com/BoneInk/Mirror/releases/tag/v1.3.5) | Windows 10 / 11 · x64 |
+| macOS | 1.3.6 | [DMG and release notes](https://github.com/BoneInk/Mirror/releases/tag/v1.3.6) | macOS 14+ · Intel / Apple Silicon |
+| Windows | 1.3.6 | [Installer](https://github.com/BoneInk/Mirror/releases/download/v1.3.6/Mirror-1.3.6-windows-x64-setup.exe) · [Portable](https://github.com/BoneInk/Mirror/releases/download/v1.3.6/Mirror-1.3.6-windows-x64-portable.exe) · [Release notes](https://github.com/BoneInk/Mirror/releases/tag/v1.3.6) | Windows 10 / 11 · x64 |
 
 ## Why I built Mirror
 
@@ -44,11 +44,11 @@ Cloud features, elaborate interactions, and a distinctive design language are op
 ## Get started
 
 - **macOS:** Download the DMG and drag Mirror into Applications.
-- **Windows:** Run the installer `.exe`, or open the portable edition directly. Checksums are in [SHA256SUMS.txt](https://github.com/BoneInk/Mirror/releases/download/v1.3.5/SHA256SUMS.txt).
+- **Windows:** Run the installer `.exe`, or open the portable edition directly. Checksums are in [SHA256SUMS.txt](https://github.com/BoneInk/Mirror/releases/download/v1.3.6/SHA256SUMS.txt).
 
 ### Automatic updates
 
-macOS and Windows check GitHub Releases daily, download and verify SHA-256 in the background, and install after you quit. The next launch uses the new version. Settings let you disable updates, check manually, or restart immediately after preserving drafts. Use Software Update on macOS or About Mirror on Windows. The first upgrade to v1.3.5 requires manual installation; installations without write permission keep the downloaded package for manual installation.
+macOS and Windows check GitHub Releases daily, download and verify SHA-256 in the background, and install after you quit. The next launch uses the new version. Settings let you disable updates, check manually, or restart immediately after preserving drafts. Use Software Update on macOS or About Mirror on Windows. The first upgrade to v1.3.6 requires manual installation; installations without write permission keep the downloaded package for manual installation.
 
 ### Asking about selected text
 
@@ -62,6 +62,16 @@ Configure agents and conversation memory in Settings. Each runtime requires its 
 
 ### Package signing
 
-The macOS app is ad-hoc signed and has not been notarized by Apple. Windows packages are unsigned.
+The repackaged macOS v1.3.6 app uses Apple Development signing and has not been notarized by Apple. Windows packages are unsigned.
+
+Local builds with `scripts/build-app.sh` automatically use the single valid Apple Development identity in your keychain, falling back to ad-hoc signing when none is available. If multiple identities exist, set `MIRROR_CODESIGN_IDENTITY` to the certificate SHA-1 or full name. Set it to `-` to explicitly use ad-hoc signing. Signing or verification failures stop the build. Apple Development signing is for local development; it does not provide Developer ID distribution signing or Apple notarization.
+
+```bash
+scripts/build-app.sh release
+# Sign an existing app without recompiling:
+scripts/sign-app.sh /Applications/Mirror.app
+# Select a specific certificate:
+MIRROR_CODESIGN_IDENTITY="Apple Development: name@example.com (XXXXXXXXXX)" scripts/build-app.sh release
+```
 
 If macOS says “Apple cannot verify Mirror” when you first open it, click Done, then go to **System Settings → Privacy & Security → Open Anyway** and confirm. Only proceed if the package came from this project’s Release page and you trust the source. See [Apple’s instructions](https://support.apple.com/en-us/102445).

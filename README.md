@@ -58,7 +58,17 @@ macOS 的预览或阅读模式中，Mermaid 流程图支持直接拖动外框的
 在设置中配置智能体和气泡记忆。不同运行时需要各自的安装、登录或服务配置；WorkBuddy 需要授权 Token，千问办公目前通过自定义桥接接入。详见[智能体接入说明](docs/agents.md)。
 
 ### 安装包签名注意
-macOS 安装包使用 ad-hoc 签名，尚未完成 Apple 公证；Windows 安装包未签名。
+重新打包的 macOS v1.3.6 应用使用 Apple Development 签名，尚未完成 Apple 公证；Windows 安装包未签名。
+
+本机构建时，`scripts/build-app.sh` 自动使用钥匙串中唯一有效的 Apple Development 签名证书；没有此类证书时使用 ad-hoc 签名。有多张证书时，需通过 `MIRROR_CODESIGN_IDENTITY` 指定证书 SHA-1 或完整名称。也可以显式设置为 `-` 使用 ad-hoc 签名。签名失败或验证失败会终止构建。Apple Development 签名用于本地开发，不代表已完成 Developer ID 分发签名或 Apple 公证。
+
+```bash
+scripts/build-app.sh release
+# 为已有的 app 签名，无需重新编译：
+scripts/sign-app.sh /Applications/Mirror.app
+# 指定签名证书：
+MIRROR_CODESIGN_IDENTITY="Apple Development: name@example.com (XXXXXXXXXX)" scripts/build-app.sh release
+```
 
 首次打开若提示“Apple 无法验证 Mirror”，请先点“完成”，再到 **系统设置 → 隐私与安全性 → 仍要打开**，按提示确认。仅在确认安装包来自本项目 Release 且信任来源时操作。详见 [Apple 官方说明](https://support.apple.com/zh-cn/102445)。
 
