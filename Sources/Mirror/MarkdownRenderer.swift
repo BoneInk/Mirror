@@ -31,6 +31,7 @@ enum MarkdownRenderer {
         :root{\(theme.css)}
         *{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--fg)}
         body{font-size:\(typography.previewFontSize)px;line-height:\(typography.previewLineHeight);font-family:\(bodyFont);padding:42px clamp(38px,6vw,76px) 100px;letter-spacing:.005em}
+        .mirror-latin{position:relative;top:var(--mirror-latin-offset)}
         article{max-width:\(typography.contentWidth)px;margin:auto;overflow-wrap:anywhere}h1,h2,h3,h4{font-family:\(bodyFont);line-height:1.25;margin:1.7em 0 .6em;letter-spacing:-.025em}h1{font-family:"New York","Songti SC","STSong",Georgia,serif;font-size:clamp(32px,2.8vw,44px);font-weight:600;line-height:1.12;margin:.25em 0 .7em}h2{font-size:1.35em;border-bottom:1px solid var(--line);padding-bottom:.42em}h3{font-size:1.08em}p{margin:1em 0}a{color:var(--accent);text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--accent) 40%,transparent)}blockquote{margin:1.5em 0;padding:.15em 1.25em;border-left:2px solid var(--accent);color:var(--muted)}code{font-size:85%;font-family:\(codeFont);background:var(--code);padding:.16em .35em;border-radius:5px}pre{margin:0;background:var(--code);padding:1.1em 1.25em;overflow:auto;line-height:1.55}pre code{padding:0;background:transparent}.code-block{margin:1.5em 0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--code)}.code-header{display:flex;align-items:center;height:30px;padding:0 12px;border-bottom:1px solid var(--line);font:600 10px/1 \(bodyFont);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}.code-dots{display:flex;gap:5px;margin-right:10px}.code-dots i{width:7px;height:7px;border-radius:50%;background:var(--line)}.tok-keyword{color:var(--syn-key);font-weight:600}.tok-string{color:var(--syn-string)}.tok-comment{color:var(--syn-comment);font-style:italic}.tok-number{color:var(--syn-number)}.tok-type{color:var(--syn-type)}.tok-tag{color:var(--syn-tag)}ul,ol{padding-left:1.4em}li{margin:.35em 0}hr{border:0;border-top:1px solid var(--line);margin:2.5em 0}img,video{max-width:100%;height:auto;border-radius:8px}audio{width:100%}details{margin:1.2em 0;padding:.8em 1em;border:1px solid var(--line);border-radius:8px;background:color-mix(in srgb,var(--code) 35%,transparent)}summary{cursor:pointer;font-weight:650}mark{background:color-mix(in srgb,#ffd95a 55%,transparent);color:inherit;padding:.05em .2em;border-radius:3px}kbd{font:80% \(codeFont);padding:.12em .38em;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;background:var(--code)}figure{margin:1.5em 0}figcaption{margin-top:.45em;color:var(--muted);font-size:.88em;text-align:center}.task{list-style:none;margin-left:-1.35em}.box{display:inline-flex;width:1.05em;height:1.05em;border:1.5px solid var(--muted);border-radius:3px;margin-right:.55em;vertical-align:-.1em;align-items:center;justify-content:center;color:white;font-size:.75em}.done{background:var(--accent);border-color:var(--accent)}
         .table-wrap{max-width:100%;overflow-x:auto;margin:1.6em 0;border-top:1px solid var(--line)}table{width:100%;min-width:620px;border-collapse:collapse;font-size:.9em;line-height:1.55}th,td{padding:.72em .5em;border-bottom:1px solid var(--line);vertical-align:top}tbody tr:last-child td{border-bottom:0}th{color:var(--muted);font-size:.88em;font-weight:650;white-space:nowrap;text-align:left}td a{word-break:break-word}
         .diagram-block{margin:1.6em 0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:color-mix(in srgb,var(--code) 30%,var(--bg))}.diagram-canvas{padding:1.25em;overflow:auto;text-align:center}.diagram-canvas svg{display:block;max-width:100%;height:auto;margin:auto}.mermaid-error{white-space:pre-wrap;text-align:left;color:#b43b3b;font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;background:color-mix(in srgb,#d44 8%,var(--bg));border-radius:6px;padding:1em}
@@ -43,6 +44,7 @@ enum MarkdownRenderer {
         th{background:var(--code);color:var(--fg)}th,td{padding:.75em .9em}
         @page{size:A4;margin:18mm}@media print{html,body{background:white!important;color:#111!important}body{padding:0;font-size:11pt}article{max-width:none}.code-block,.table-wrap,.diagram-block,blockquote{break-inside:avoid}a{color:inherit;text-decoration:underline}.code-header{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
         </style>\(mathStyle)\(embeddedRuntime)\(embeddedMathRuntime)</head><body><article data-source-lines="\(sourceLineCount)">\(body)</article><script>
+        \(mixedScriptTypography)
         window.__mirrorLayoutChangedAt=performance.now();
         window.mirrorInvalidateLayout=()=>{window.__mirrorSourceAnchors=null;window.__mirrorLayoutChangedAt=performance.now()};
         window.mirrorAnchorTop=anchor=>{const article=document.querySelector('article');if(anchor.edge==='start')return article.getBoundingClientRect().top+window.scrollY;if(anchor.edge==='end')return article.getBoundingClientRect().bottom+window.scrollY;return anchor.element.getBoundingClientRect().top+window.scrollY};
@@ -59,11 +61,76 @@ enum MarkdownRenderer {
         window.mirrorRenderMermaid=async()=>{window.mirrorMermaidDone=false;try{const nodes=[...document.querySelectorAll('.mermaid:not([data-processed])')];if(!nodes.length)return;if(typeof mermaid==='undefined'){for(const node of nodes){node.classList.add('mermaid-error');node.textContent='Mermaid runtime is unavailable.'}return}mermaid.initialize({startOnLoad:false,securityLevel:'strict',theme:'\(mermaidTheme)',fontFamily:'\(javascriptString(typography.previewFontFamily ?? "-apple-system"))'});for(const node of nodes){const source=node.textContent;try{await mermaid.parse(source);await mermaid.run({nodes:[node],suppressErrors:false});window.mirrorInstallDiagram?.(node)}catch(error){node.removeAttribute('data-processed');node.classList.add('mermaid-error');node.textContent='Diagram syntax error\\n'+(error?.message??String(error))}}}finally{window.mirrorMermaidDone=true}};
         window.mirrorRenderMath=async()=>{window.mirrorMathDone=false;try{const nodes=[...document.querySelectorAll('[data-math]:not([data-math-rendered])')];if(!nodes.length)return;if(typeof katex==='undefined'){for(const node of nodes){node.classList.add('math-error');node.textContent='KaTeX runtime is unavailable.\\n'+node.textContent}return}for(const node of nodes){try{const source=new TextDecoder().decode(Uint8Array.from(atob(node.dataset.math),c=>c.charCodeAt(0)));katex.render(source,node,{displayMode:node.dataset.mathDisplay==='true',throwOnError:false,strict:'warn',trust:false,output:'htmlAndMathml'});node.dataset.mathRendered='true'}catch(error){node.classList.add('math-error');node.textContent='Math syntax error\\n'+(error?.message??String(error))}}}finally{window.mirrorMathDone=true}};
         window.mirrorRenderAll=async()=>{window.mirrorEnhancementsDone=false;try{await Promise.all([window.mirrorRenderMermaid(),window.mirrorRenderMath()]);for(const node of document.querySelectorAll('.diagram-canvas.mermaid'))window.mirrorInstallDiagram?.(node);await window.mirrorAwaitMedia();window.mirrorInstallLayoutObserver();window.mirrorInvalidateLayout()}finally{window.mirrorEnhancementsDone=true}};
-        window.mirrorReplaceContent=(content,sourceLines,title,line,fraction,guide,boundary,generation)=>{const article=document.querySelector('article');if(!article)return false;window.__mirrorContentGeneration=Number(generation)||0;if(window.__mirrorResizeObserver){window.__mirrorResizeObserver.disconnect();window.__mirrorResizeObserver=null}window.mirrorClearDiagramInteractions?.();article.innerHTML=String(content??'');article.dataset.sourceLines=String(Math.max(1,Number(sourceLines)||1));document.title=String(title??document.title);window.mirrorInvalidateLayout();window.mirrorInstallLayoutObserver();window.mirrorScrollToPosition(line,fraction,guide,boundary);requestAnimationFrame(()=>{if(window.__mirrorContentGeneration===Number(generation))window.mirrorScrollToPosition(line,fraction,guide,boundary)});Promise.resolve(window.mirrorRenderAll()).then(()=>{if(window.__mirrorContentGeneration!==Number(generation))return;window.mirrorScrollToPosition(line,fraction,guide,boundary);requestAnimationFrame(()=>window.mirrorScrollToPosition(line,fraction,guide,boundary))});return true};
+        window.mirrorReplaceContent=(content,sourceLines,title,line,fraction,guide,boundary,generation)=>{const article=document.querySelector('article');if(!article)return false;window.__mirrorContentGeneration=Number(generation)||0;if(window.__mirrorResizeObserver){window.__mirrorResizeObserver.disconnect();window.__mirrorResizeObserver=null}window.mirrorClearDiagramInteractions?.();article.innerHTML=String(content??'');window.mirrorBalanceMixedScript?.(article);article.dataset.sourceLines=String(Math.max(1,Number(sourceLines)||1));document.title=String(title??document.title);window.mirrorInvalidateLayout();window.mirrorInstallLayoutObserver();window.mirrorScrollToPosition(line,fraction,guide,boundary);requestAnimationFrame(()=>{if(window.__mirrorContentGeneration===Number(generation))window.mirrorScrollToPosition(line,fraction,guide,boundary)});Promise.resolve(window.mirrorRenderAll()).then(()=>{if(window.__mirrorContentGeneration!==Number(generation))return;window.mirrorScrollToPosition(line,fraction,guide,boundary);requestAnimationFrame(()=>window.mirrorScrollToPosition(line,fraction,guide,boundary))});return true};
         \(autoRender)
         </script></body></html>
         """
     }
+
+    private static let mixedScriptTypography = #"""
+    function mirrorMixedScriptOffset(context, font, fontSize) {
+        context.font = font;
+        const han = context.measureText('中文國字');
+        // Keep a shared Latin baseline so descenders can extend naturally below it.
+        const latin = context.measureText('HME');
+        const offset = (han.actualBoundingBoxDescent - latin.actualBoundingBoxDescent) / fontSize;
+        return Number.isFinite(offset) && Math.abs(offset) >= .015 ? `${offset.toFixed(4)}em` : null;
+    }
+
+    window.mirrorBalanceMixedScript = article => {
+        const blocks = new Map();
+        const walker = document.createTreeWalker(article, NodeFilter.SHOW_TEXT);
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            const parent = node.parentElement;
+            if (parent.closest('pre,code,kbd,samp,sup,sub,svg,math,[data-math],.mermaid,.mirror-latin')) continue;
+            const block = parent.closest('p,li,td,th,figcaption');
+            if (!block) continue;
+            if (!blocks.has(block)) blocks.set(block, []);
+            blocks.get(block).push(node);
+        }
+
+        const han = /\p{Script=Han}/u;
+        const latin = /\p{Script=Latin}/u;
+        const words = /(?:\p{Script=Latin}\p{M}*|[\x21-\x7e])+/gu;
+        const offsets = new Map();
+        const changes = [];
+        let context;
+        for (const [block, nodes] of blocks) {
+            if (!nodes.some(node => han.test(node.data))) continue;
+            const latinNodes = nodes.filter(node => latin.test(node.data));
+            if (!latinNodes.length) continue;
+            context ??= document.createElement('canvas').getContext('2d');
+            if (!context) return;
+            const style = getComputedStyle(block);
+            const font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+            if (!offsets.has(font)) {
+                offsets.set(font, mirrorMixedScriptOffset(context, font, parseFloat(style.fontSize)));
+            }
+            const offset = offsets.get(font);
+            if (offset) changes.push({block, nodes: latinNodes, offset});
+        }
+
+        for (const {block, nodes, offset} of changes) {
+            block.style.setProperty('--mirror-latin-offset', offset);
+            for (const node of nodes) {
+                const text = node.data;
+                const replacement = document.createDocumentFragment();
+                let end = 0;
+                for (const match of text.matchAll(words)) {
+                    if (!latin.test(match[0])) continue;
+                    const span = document.createElement('span');
+                    span.className = 'mirror-latin';
+                    span.textContent = match[0];
+                    replacement.append(text.slice(end, match.index), span);
+                    end = match.index + match[0].length;
+                }
+                replacement.append(text.slice(end));
+                node.replaceWith(replacement);
+            }
+        }
+    };
+    window.mirrorBalanceMixedScript(document.querySelector('article'));
+    """#
 
     static func render(_ markdown: String, preserveSingleLineBreaks: Bool = false) -> String {
         render(markdown, inheritedReferences: [:], preserveSingleLineBreaks: preserveSingleLineBreaks)

@@ -7,8 +7,8 @@
 
 | 平台 | 当前版本 | 下载 | 系统要求 |
 | --- | --- | --- | --- |
-| macOS | 1.3.7 | [DMG 与更新说明](https://github.com/BoneInk/Mirror/releases/tag/v1.3.7) | macOS 14+ · Intel / Apple Silicon |
-| Windows | 1.3.7 | [安装版](https://github.com/BoneInk/Mirror/releases/download/v1.3.7/Mirror-1.3.7-windows-x64-setup.exe) · [便携版](https://github.com/BoneInk/Mirror/releases/download/v1.3.7/Mirror-1.3.7-windows-x64-portable.exe) · [更新说明](https://github.com/BoneInk/Mirror/releases/tag/v1.3.7) | Windows 10 / 11 · x64 |
+| macOS | 1.3.8 | [DMG 与更新说明](https://github.com/BoneInk/Mirror/releases/tag/v1.3.8) | macOS 14+ · Intel / Apple Silicon |
+| Windows | 1.3.8 | [安装版](https://github.com/BoneInk/Mirror/releases/download/v1.3.8/Mirror-1.3.8-windows-x64-setup.exe) · [便携版](https://github.com/BoneInk/Mirror/releases/download/v1.3.8/Mirror-1.3.8-windows-x64-portable.exe) · [更新说明](https://github.com/BoneInk/Mirror/releases/tag/v1.3.8) | Windows 10 / 11 · x64 |
 
 ## 为什么做Mirro
 本人在工作中，经常需要阅读各种Markdown文档，特别是AI Coding之后，与各类Agent的交互和成果核对，更多依赖于阶段性的Markdown文档产出，因此对于一款好用的本地Markdown编辑器的需求更显得急迫。
@@ -42,7 +42,7 @@
 ## 开始使用
 
 - **macOS：** 下载 DMG，将 Mirror 拖入 Applications。
-- **Windows：** 运行安装版 `.exe`，或直接打开便携版。文件校验见 [SHA256SUMS.txt](https://github.com/BoneInk/Mirror/releases/download/v1.3.7/SHA256SUMS.txt)。
+- **Windows：** 运行安装版 `.exe`，或直接打开便携版。文件校验见 [SHA256SUMS.txt](https://github.com/BoneInk/Mirror/releases/download/v1.3.8/SHA256SUMS.txt)。
 
 在 macOS 上，双击顶栏空白处或文档标题可填满菜单栏与 Dock 之间的区域。再次双击可恢复原来的窗口位置和大小。
 
@@ -60,7 +60,7 @@ macOS 的预览或阅读模式中，Mermaid 流程图支持直接拖动外框的
 在设置中配置智能体和气泡记忆。不同运行时需要各自的安装、登录或服务配置；WorkBuddy 需要授权 Token，千问办公目前通过自定义桥接接入。详见[智能体接入说明](docs/agents.md)。
 
 ### 安装包签名注意
-macOS v1.3.7 应用使用 Apple Development 签名，尚未完成 Apple 公证；Windows 安装包未签名。
+macOS v1.3.8 应用使用 Apple Development 签名，尚未完成 Apple 公证；Windows 安装包未签名。
 
 本机构建时，`scripts/build-app.sh` 自动使用钥匙串中唯一有效的 Apple Development 签名证书；没有此类证书时使用 ad-hoc 签名。有多张证书时，需通过 `MIRROR_CODESIGN_IDENTITY` 指定证书 SHA-1 或完整名称。也可以显式设置为 `-` 使用 ad-hoc 签名。签名失败或验证失败会终止构建。Apple Development 签名用于本地开发，不代表已完成 Developer ID 分发签名或 Apple 公证。
 
@@ -80,9 +80,9 @@ MIRROR_CODESIGN_IDENTITY="Apple Development: name@example.com (XXXXXXXXXX)" scri
 上传两端安装包前，使用相同文件生成校验和与备用更新清单，并将输出一起上传到正式 Release：
 
 ```bash
-python3 scripts/create-update-manifest.py --tag v1.3.7 \
-  dist/Mirror-1.3.7.dmg \
-  Windows/release/Mirror-1.3.7-windows-x64-setup.exe \
-  Windows/release/Mirror-1.3.7-windows-x64-portable.exe
+python3 scripts/create-update-manifest.py --tag v1.3.8 \
+  dist/Mirror-1.3.8.dmg \
+  Windows/release/Mirror-1.3.8-windows-x64-setup.exe \
+  Windows/release/Mirror-1.3.8-windows-x64-portable.exe
 # 上传 dist/Mirror-update.json 和 dist/SHA256SUMS.txt
 ```

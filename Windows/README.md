@@ -1,6 +1,6 @@
-# Mirror for Windows · 1.3.7
+# Mirror for Windows · 1.3.8
 
-[安装版](https://github.com/BoneInk/Mirror/releases/download/v1.3.7/Mirror-1.3.7-windows-x64-setup.exe) · [便携版](https://github.com/BoneInk/Mirror/releases/download/v1.3.7/Mirror-1.3.7-windows-x64-portable.exe) · [更新说明](https://github.com/BoneInk/Mirror/releases/tag/v1.3.7) · [SHA-256 校验](https://github.com/BoneInk/Mirror/releases/download/v1.3.7/SHA256SUMS.txt)
+[安装版](https://github.com/BoneInk/Mirror/releases/download/v1.3.8/Mirror-1.3.8-windows-x64-setup.exe) · [便携版](https://github.com/BoneInk/Mirror/releases/download/v1.3.8/Mirror-1.3.8-windows-x64-portable.exe) · [更新说明](https://github.com/BoneInk/Mirror/releases/tag/v1.3.8) · [SHA-256 校验](https://github.com/BoneInk/Mirror/releases/download/v1.3.8/SHA256SUMS.txt)
 
 支持 Windows 10 / 11 x64。Windows 项目使用 Electron 44、React 19 和 Vite 7，按 macOS 源码对齐主要界面与交互。保留折页 M 图标、纸张画布、暖色强调、标签导航和阅读留白，窗口控制与快捷键适配 Windows。
 

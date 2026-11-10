@@ -8,8 +8,8 @@ A Markdown editor focused on simplicity, speed, and a pleasant interface, with a
 
 | Platform | Current version | Download | Requirements |
 | --- | --- | --- | --- |
-| macOS | 1.3.7 | [DMG and release notes](https://github.com/BoneInk/Mirror/releases/tag/v1.3.7) | macOS 14+ · Intel / Apple Silicon |
-| Windows | 1.3.7 | [Installer](https://github.com/BoneInk/Mirror/releases/download/v1.3.7/Mirror-1.3.7-windows-x64-setup.exe) · [Portable](https://github.com/BoneInk/Mirror/releases/download/v1.3.7/Mirror-1.3.7-windows-x64-portable.exe) · [Release notes](https://github.com/BoneInk/Mirror/releases/tag/v1.3.7) | Windows 10 / 11 · x64 |
+| macOS | 1.3.8 | [DMG and release notes](https://github.com/BoneInk/Mirror/releases/tag/v1.3.8) | macOS 14+ · Intel / Apple Silicon |
+| Windows | 1.3.8 | [Installer](https://github.com/BoneInk/Mirror/releases/download/v1.3.8/Mirror-1.3.8-windows-x64-setup.exe) · [Portable](https://github.com/BoneInk/Mirror/releases/download/v1.3.8/Mirror-1.3.8-windows-x64-portable.exe) · [Release notes](https://github.com/BoneInk/Mirror/releases/tag/v1.3.8) | Windows 10 / 11 · x64 |
 
 ## Why I built Mirror
 
@@ -44,7 +44,7 @@ Cloud features, elaborate interactions, and a distinctive design language are op
 ## Get started
 
 - **macOS:** Download the DMG and drag Mirror into Applications.
-- **Windows:** Run the installer `.exe`, or open the portable edition directly. Checksums are in [SHA256SUMS.txt](https://github.com/BoneInk/Mirror/releases/download/v1.3.7/SHA256SUMS.txt).
+- **Windows:** Run the installer `.exe`, or open the portable edition directly. Checksums are in [SHA256SUMS.txt](https://github.com/BoneInk/Mirror/releases/download/v1.3.8/SHA256SUMS.txt).
 
 On macOS, double-click the document title or an empty area of the title bar to fill the space between the menu bar and the Dock. Double-click again to restore the previous window size and position.
 
@@ -64,7 +64,7 @@ Configure agents and conversation memory in Settings. Each runtime requires its 
 
 ### Package signing
 
-The macOS v1.3.7 app uses Apple Development signing and has not been notarized by Apple. Windows packages are unsigned.
+The macOS v1.3.8 app uses Apple Development signing and has not been notarized by Apple. Windows packages are unsigned.
 
 Local builds with `scripts/build-app.sh` automatically use the single valid Apple Development identity in your keychain, falling back to ad-hoc signing when none is available. If multiple identities exist, set `MIRROR_CODESIGN_IDENTITY` to the certificate SHA-1 or full name. Set it to `-` to explicitly use ad-hoc signing. Signing or verification failures stop the build. Apple Development signing is for local development; it does not provide Developer ID distribution signing or Apple notarization.
 
