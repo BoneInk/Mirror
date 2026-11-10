@@ -76,29 +76,32 @@ async function nativeModels(profile, { timeout = 15000 } = {}) {
         env: { ...spec.env, NO_COLOR: "1", TERM: "dumb", ...(kind === "opencode" ? { OPENCODE_DISABLE_DEFAULT_PLUGINS: "true" } : {}) },
         stdio: ["pipe", "pipe", "ignore"] });
       const decoder = new StringDecoder("utf8");
-      let buffer = "", size = 0, settled = false;
+      let buffer = "", size = 0, outcome;
       function finish(error, rows) {
-        if (settled) return;
-        settled = true; clearTimeout(timer);
+        if (outcome) return;
+        outcome = { error, rows };
+        clearTimeout(timer);
         child.stdin.destroy();
-        if (child.exitCode === null) {
+        child.stdout.destroy();
+        if (child.pid && child.exitCode === null && child.signalCode === null) {
           child.kill();
-          const force = setTimeout(() => { if (child.exitCode === null) child.kill("SIGKILL"); }, 500);
+          const force = setTimeout(() => {
+            if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+          }, 500);
           force.unref(); child.once("close", () => clearTimeout(force));
         }
-        if (error) reject(error); else resolve(rows);
       }
       const timer = setTimeout(() => finish(Error("模型查询超时，请检查 CLI 版本与登录；仍可手动填写。")), timeout);
       const send = (request) => child.stdin.write(JSON.stringify(request) + "\n");
       child.on("error", () => finish(Error("无法启动模型查询命令。")));
       child.stdin.on("error", () => finish(failure()));
       child.stdout.on("data", (chunk) => {
-        if (settled) return;
+        if (outcome) return;
         size += chunk.length;
         if (size > 2_000_000) return finish(Error("模型列表超出大小限制。"));
         buffer += decoder.write(chunk);
         if (!rpc) return;
-        while (buffer.includes("\n") && !settled) {
+        while (buffer.includes("\n") && !outcome) {
           const end = buffer.indexOf("\n"), line = buffer.slice(0, end); buffer = buffer.slice(end + 1);
           let object;
           try { object = JSON.parse(line); } catch { continue; }
@@ -125,10 +128,16 @@ async function nativeModels(profile, { timeout = 15000 } = {}) {
           } catch (error) { finish(error); }
         }
       });
-      child.on("close", (code) => {
-        if (settled) return;
-        if (code !== 0 || rpc) return finish(Error("模型查询失败，请检查 CLI 版本与登录；仍可手动填写。"));
-        try { finish(null, parseList(buffer + decoder.end(), kind)); } catch (error) { finish(error); }
+      child.once("close", (code) => {
+        if (!outcome) {
+          if (code !== 0 || rpc) {
+            finish(Error("模型查询失败，请检查 CLI 版本与登录；仍可手动填写。"));
+          } else {
+            try { finish(null, parseList(buffer + decoder.end(), kind)); } catch (error) { finish(error); }
+          }
+        }
+        // Windows keeps the query directory locked while the child is using it.
+        if (outcome.error) reject(outcome.error); else resolve(outcome.rows);
       });
       if (acp) send({ jsonrpc: "2.0", id: "mirror-initialize", method: "initialize", params: { protocolVersion: 1, clientCapabilities: {}, clientInfo: { name: "Mirror", version: "1" } } });
       else if (kind === "claude") send({ type: "control_request", request_id: "mirror-models", request: { subtype: "initialize" } });

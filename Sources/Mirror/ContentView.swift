@@ -759,9 +759,11 @@ private struct TopBar: View {
                     .lineLimit(1)
             }
             .frame(maxWidth: 360)
+            .allowsHitTesting(false)
 
             HStack(spacing: 8) {
                 MirrorBrand()
+                    .allowsHitTesting(false)
                 Spacer()
 
                 ViewThatFits(in: .horizontal) {
@@ -789,10 +791,50 @@ private struct TopBar: View {
         .padding(.leading, 76)
         .padding(.trailing, 12)
         .frame(height: 54)
+        .background {
+            TitleBarDoubleClickRegion()
+                .padding(.leading, 76)
+                .accessibilityHidden(true)
+        }
         .navigationGlass(radius: 0)
         .overlay(alignment: .bottom) { Divider().opacity(0.5) }
     }
 
+}
+
+private struct TitleBarDoubleClickRegion: NSViewRepresentable {
+    func makeNSView(context: Context) -> RegionView { RegionView() }
+    func updateNSView(_ view: RegionView, context: Context) {}
+
+    final class RegionView: NSView {
+        private var clickMonitor: Any?
+
+        override func viewWillMove(toWindow newWindow: NSWindow?) {
+            if let clickMonitor {
+                NSEvent.removeMonitor(clickMonitor)
+                self.clickMonitor = nil
+            }
+            super.viewWillMove(toWindow: newWindow)
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard window != nil else { return }
+
+            // AppKit can route title-bar clicks to window dragging before the view sees them.
+            clickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+                guard let self, let window = self.window, event.window === window,
+                      event.clickCount == 2, window.styleMask.contains(.resizable),
+                      !window.styleMask.contains(.fullScreen), window.attachedSheet == nil,
+                      let contentView = window.contentView, let frameView = contentView.superview,
+                      contentView.hitTest(frameView.convert(event.locationInWindow, from: nil)) === self
+                else { return event }
+
+                window.zoom(nil)
+                return nil
+            }
+        }
+    }
 }
 
 private struct MirrorBrand: View {
