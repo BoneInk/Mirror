@@ -161,10 +161,11 @@ test("selection conversation uses custom CLI, streams and retains history withou
   await page.evaluate(
     async ({ executable, cli }) => {
       const data = await window.mirror.call("bootstrap");
-      data.settings.selectedAgent = "custom";
-      const p = data.settings.profiles.find((p) => p.id === "custom");
+      const p = (await window.mirror.call("agent-presets")).find((p) => p.id === "custom");
       p.executable = executable;
       p.arguments = JSON.stringify([cli]);
+      data.settings.profiles.push(p);
+      data.settings.selectedAgent = p.id;
       await window.mirror.call("settings-save", data.settings);
     },
     { executable: process.execPath, cli },
